@@ -53,7 +53,7 @@ const char* const VEC_ERR_MSG[] = {
  *
  * [Aborts] if the new capacity is smaller than the length
  * of the vector which indicates there's something wrong with
- * the resizing policies and they've been tampered.
+ * the resizing policies and they've been tampered with.
  */
 static vec_err_t
 vec_resize(vec_t* vec, size_t capacity) {
