@@ -291,7 +291,7 @@ vec_insert(vec_t* vec, size_t idx, int32_t val) {
         return resize_status;
     }
 
-    for (ssize_t i = vec->len - 1; i >= idx; --i) {
+    for (size_t i = vec->len - 1; i >= idx; --i) {
         vec->elems[i + 1] = vec->elems[i];
     }
 
