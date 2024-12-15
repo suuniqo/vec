@@ -7,20 +7,24 @@
 #include <stddef.h>
 #include <stdint.h>
 #include <stdlib.h>
-#include <stdio.h>
 #include <string.h>
+#include <stdio.h>
 #include <limits.h>
 
 
 /* =========== DATA ============ */
 
 /*
- * Dynamic array of variable length.
+ * Dynamic array of variable length,
+ * resizes and shrinks dynamically
+ * which can store data of any size while 
+ * it is constant
  */
 typedef struct vec {
-    int32_t* elems;                             /* memory containing the elements */
     size_t len;                                 /* current number of elements */
     size_t capacity;                            /* current allocated memory */
+    size_t elem_size;                           /* size of the data type stored */
+    void* elems;                                /* memory containing the elements */
 } vec_t;
 
 /*
@@ -36,6 +40,8 @@ const char* const VEC_ERR_MSG[] = {
 };
 
 #define MIN_CAPACITY 16                         /* Minimum capacity of the vector */
+#define MAX_CAPACITY INT_MAX                    /* Maximum capacity of the vector */
+#define MAX_DATA_SIZE INT_MAX                   /* Maximum size in bytes of elements */
 
 #define SHRINK_POLICY 4                         /* Minimum ratio of len / capacity */
 #define SHRINK_FACTOR 2                         /* Factor by which the capacity shrinks */
@@ -46,22 +52,16 @@ const char* const VEC_ERR_MSG[] = {
 
 /* ========== PRIVATE ========== */
 
+/* === Reallocation === */
+
 /*
  * Reallocates the vector with `capacity` memory
  *
  * [Returns] `NOMEM` if fails to allocate memory `OK` otherwise.
- *
- * [Aborts] if the new capacity is smaller than the length
- * of the vector which indicates there's something wrong with
- * the resizing policies and they've been tampered with.
  */
 static vec_err_t
-vec_resize(vec_t* vec, size_t capacity) {
-    if (capacity < vec->len) {
-        exit(EXIT_FAILURE);
-    }
-
-    int32_t* new_elems = realloc(vec->elems, capacity * sizeof(int32_t)); 
+vec_reallocate(vec_t* vec, size_t capacity) {
+    void* new_elems = realloc(vec->elems, capacity * vec->elem_size); 
 
     if (new_elems == NULL) {
         return VEC_ERR_NOMEM;
@@ -74,22 +74,28 @@ vec_resize(vec_t* vec, size_t capacity) {
 }
 
 /*
- * Reallocates the vector, doubling it's capacity.
+ * Reallocates the vector if `GROW_POLICY` is fulfilled, doubling it's capacity.
+ *
+ * [Returns] `NOMEM` if fails to allocate memory,
+ * `INVOP` if growing would surpass maximum space or `OK` otherwise.
  */
 static vec_err_t
 vec_check_grow(vec_t* vec) {
     if (vec->len < vec->capacity * GROWTH_POLICY) {
         return VEC_ERR_OK;
     }
-    if (vec->capacity > INT_MAX / GROWTH_FACTOR) {
+    if (vec->capacity > MAX_CAPACITY / GROWTH_FACTOR) {
         return VEC_ERR_INVOP;
     }
 
-    return vec_resize(vec, vec->capacity * GROWTH_FACTOR);
+    size_t new_capacity = vec->capacity * GROWTH_FACTOR;
+    return vec_reallocate(vec, MIN_CAPACITY > new_capacity ? MIN_CAPACITY : new_capacity);
 }
 
 /*
- * Reallocates the vector, halfing it's capacity.
+ * Reallocates the vector if `SHRINK_POLIVY` is fulfilled, halving it's capacity.
+ *
+ * [Returns] `NOMEM` if fails to allocate memory `OK` otherwise.
  */
 static vec_err_t
 vec_check_shrink(vec_t* vec) {
@@ -97,37 +103,72 @@ vec_check_shrink(vec_t* vec) {
         return VEC_ERR_OK;
     }
 
-    return vec_resize(vec, vec->capacity / SHRINK_FACTOR);
+    size_t new_capacity = vec->capacity / SHRINK_FACTOR;
+    return vec_reallocate(vec, new_capacity < MIN_CAPACITY ? MIN_CAPACITY : new_capacity);
 }
 
 
-/* ========== METHODS ========== */
+
+/* === Writing === */
+
+/*
+ * Writes into `vec` at `idx` the contents of `src`.
+ */
+static void
+vec_write_idx(vec_t* vec, size_t idx, const void* src) {
+    memcpy((uint8_t*) vec->elems + idx * vec->elem_size, src, vec->elem_size);
+}
+
+/*
+ * Writes into `dest` the contents of `vec` at `idx`.
+ */
+static void
+vec_write_var(const vec_t* vec, size_t idx, void* dest) {
+    memcpy(dest, (uint8_t*) vec->elems + idx * vec->elem_size, vec->elem_size);
+}
+
+
+
+/* ========== PUBLIC ========== */
+
+
+/* === Memory Management === */
 
 /*
  * Creates a new instance of vec_t, allocating memory for 
- * `capacity` (or default value if negative) integers.
+ * `capacity` (or default value if negative) elements of size `elem_size`
  *
- * [Returns] `NOMEM` if fails to allocate memory `OK` otherwise.
+ * [Returns] `INVOP` if element size is smaller than one byte
+ * or is bigger than `MAX_DATA_SIZE`, `INVARG` if `vec` is NULL,
+ * NOMEM` if fails to allocate memory `OK` otherwise.
  */
 vec_err_t
-vec_make(vec_t** vec, size_t capacity) {
+vec_make(vec_t** vec, size_t elem_size, size_t capacity) {
+    if (vec == NULL) {
+        return VEC_ERR_INVARG;
+    }
+    if (elem_size < 1 || elem_size > MAX_DATA_SIZE) {
+        return VEC_ERR_INVOP;
+    }
     if (capacity < MIN_CAPACITY) {
         capacity = MIN_CAPACITY;
     }
 
     *vec = malloc(sizeof(vec_t));
-    if (vec == NULL) {
+    if (*vec == NULL) {
         return VEC_ERR_NOMEM;
     }
 
     **vec = (vec_t) {
         .len = 0,
         .capacity = capacity,
-        .elems = malloc(capacity * sizeof(int32_t))
+        .elem_size = elem_size,
+        .elems = malloc(capacity * elem_size)
     };
 
     if ((*vec)->elems == NULL) {
-        free(vec);
+        free(*vec);
+        *vec = NULL;
         return VEC_ERR_NOMEM;
     }
 
@@ -135,11 +176,30 @@ vec_make(vec_t** vec, size_t capacity) {
 }
 
 /*
+ * Resizes the vector with `capacity` memory
+ *
+ * [Returns] `NOMEM` if fails to allocate memory,
+ * `INVARG` if the vector is NULL, `INVOP` if capacity isn't 
+ * in the valid range or `OK` otherwise.
+ */
+vec_err_t
+vec_resize(vec_t* vec, size_t capacity) {
+    if (vec == NULL) {
+        return VEC_ERR_INVARG;
+    }
+    if (capacity <= MIN_CAPACITY || capacity > MAX_CAPACITY) {
+        return VEC_ERR_INVOP;
+    }
+
+    return vec_reallocate(vec, capacity);
+}
+
+/*
  * Reallocates the vector, reserving the exact amount of
  * memory needed to hold it's current contents
  *
  * [Returns] `INVARG` if the vector is NULL, `INVOP` if it's empty,
- * `NOMEM` if fails to allocate menory or `OK` otherwise.
+ * `NOMEM` if fails to allocate memory or `OK` otherwise.
  */
 vec_err_t
 vec_shrink_to_fit(vec_t* vec) {
@@ -153,12 +213,12 @@ vec_shrink_to_fit(vec_t* vec) {
         return VEC_ERR_OK;
     }
 
-    return vec_resize(vec, vec->len);
+    return vec_reallocate(vec, vec->len);
 }
 
 /*
  * Resets the vector, reallocating
- * and deleting it's contents.
+ * and deleting it's contents if enough memory.
  *
  * [Returns] `INVARG` if the vector is NULL,
  * `NOMEM` if fails to allocate memory `OK` otherwise.
@@ -168,8 +228,12 @@ vec_clear(vec_t* vec) {
     if (vec == NULL) {
         return VEC_ERR_INVARG;
     }
+    if (vec->capacity <= MIN_CAPACITY) {
+        vec->len = 0;
+        return VEC_ERR_OK;
+    }
 
-    int32_t* new_elems = malloc(MIN_CAPACITY * sizeof(int32_t)); 
+    void* new_elems = malloc(MIN_CAPACITY * vec->elem_size); 
 
     if (new_elems == NULL) {
         return VEC_ERR_NOMEM;
@@ -177,11 +241,9 @@ vec_clear(vec_t* vec) {
 
     free(vec->elems);
 
-    *vec = (vec_t) {
-        .elems = new_elems,
-        .capacity = MIN_CAPACITY,
-        .len = 0
-    };
+    vec->len = 0;
+    vec->capacity = MIN_CAPACITY;
+    vec->elems = new_elems;
 
     return VEC_ERR_OK;
 }
@@ -190,9 +252,41 @@ vec_clear(vec_t* vec) {
  * Destroys the instance of vec_t.
  */
 void
-vec_free(vec_t* vec) {
-    free(vec->elems);
-    free(vec);
+vec_destroy(vec_t** vec) {
+    if (vec == NULL || *vec == NULL) {
+        return;
+    }
+
+    free((*vec)->elems);
+    free(*vec);
+
+    vec = NULL;
+}
+
+
+
+/* === Write Operations === */
+
+/* == In-Place == */
+
+/*
+ * Sets the element at `idx` of `vec` with the value of `src`.
+ *
+ * [Returns] `INVARG` if any of the parameters are NULL,
+ * `IOOB` if any index is out of bounds or `OK` otherwise.
+ */
+vec_err_t
+vec_set(vec_t* vec, size_t idx, const void* src) {
+    if (vec == NULL || src == NULL) {
+        return VEC_ERR_INVARG;
+    }
+    if (idx >= vec->len) {
+        return VEC_ERR_IOOB;
+    }
+
+    vec_write_idx(vec, idx, src);
+
+    return VEC_ERR_OK;
 }
 
 /*
@@ -202,83 +296,62 @@ vec_free(vec_t* vec) {
  * `IOOB` if the index is out of bounds or `OK` otherwise.
  */
 vec_err_t
-vec_replace(vec_t* vec, size_t idx, int32_t val, int32_t* old_val) {
-    if (vec == NULL) {
+vec_replace(vec_t* vec, size_t idx, const void* val, void* old_val) {
+    if (vec == NULL || val == NULL || old_val == NULL) {
         return VEC_ERR_INVARG;
     }
-    if (vec->len <= idx) {
+    if (idx >= vec->len) {
         return VEC_ERR_IOOB;
     }
 
-    if (old_val != NULL) {
-        *old_val = vec->elems[idx];
-    }
-
-    vec->elems[idx] = val;
+    vec_write_var(vec, idx, old_val);
+    vec_write_idx(vec, idx, val);
 
     return VEC_ERR_OK;
 }
 
 /*
- * Inserts `val` at the end of `vec`.
+ * Swaps the elements of `vec` at `idx1` at and `idx2`.
  *
  * [Returns] `INVARG` if the vector is NULL,
- * `INVOP` if it has reached maximum capacity,
- * `NOMEM` if fails to allocate menory or `OK` otherwise.
+ * `IOOB` if any index is out of bounds or `OK` otherwise.
  */
 vec_err_t
-vec_push(vec_t* vec, int32_t val) {
+vec_swap(vec_t* vec, size_t idx1, size_t idx2) {
     if (vec == NULL) {
         return VEC_ERR_INVARG;
     }
-
-    vec_err_t resize_status = vec_check_grow(vec);
-
-    if (resize_status != VEC_ERR_OK) {
-        return resize_status;
+    if (idx1 >= vec->len || idx2 >= vec->len) {
+        return VEC_ERR_IOOB;
     }
 
-    vec->elems[vec->len++] = val;
+    uint8_t temp[vec->elem_size];
+
+    vec_write_var(vec, idx1, temp);
+    vec_write_idx(vec, idx1, (uint8_t*) vec->elems + idx2 * vec->elem_size);
+    vec_write_idx(vec, idx2, temp);
 
     return VEC_ERR_OK;
 }
 
-/*
- * Removes the last element of `vec` and
- * optionally sets `popped` to the removed value.
- *
- * [Returns] `INVARG` if the vector is NULL 
- * `INVOP` if the vector is empty, `NOMEM` if fails to allocate menory or `OK` otherwise.
- */
-vec_err_t
-vec_pop(vec_t* vec, int32_t* popped) {
-    if (vec == NULL) {
-        return VEC_ERR_INVARG;
-    }
-    if (vec_is_empty(vec)) {
-        return VEC_ERR_INVOP;
-    }
 
-    if (popped != NULL) {
-        *popped = vec->elems[vec->len - 1];
-    }
-
-    --vec->len;
-
-    return vec_check_shrink(vec);
-}
+/* == Not In-Place == */
 
 /*
  * Inserts `val` at the position `idx`,
  * shifting all elements after it to the right.
+ * It allows inserting at the end of `vec`.
+ *
+ * If it has no space left it reallocates,
+ * doubling it's size
  *
  * [Returns] `INVARG` if the vector is NULL,
  * `IOOB` if the index is out of bounds,
  * `INVOP` if it has reached maximum capacity,
- * `NOMEM` if fails to allocate menory or `OK` otherwise.
+ * `NOMEM` if fails to allocate memory or `OK` otherwise.
  */
 vec_err_t
-vec_insert(vec_t* vec, size_t idx, int32_t val) {
+vec_insert(vec_t* vec, size_t idx, const void* val) {
     if (vec == NULL) {
         return VEC_ERR_INVARG;
     }
@@ -291,12 +364,12 @@ vec_insert(vec_t* vec, size_t idx, int32_t val) {
         return resize_status;
     }
 
-    for (size_t i = vec->len - 1; i >= idx; --i) {
-        vec->elems[i + 1] = vec->elems[i];
-    }
+    memmove((uint8_t*) vec->elems + (idx + 1) * vec->elem_size,
+            (uint8_t*) vec->elems + idx * vec->elem_size,
+            (vec->len - idx) * vec->elem_size);
 
-    vec->elems[idx] = val;
     ++vec->len;
+    vec_write_idx(vec, idx, val);
 
     return VEC_ERR_OK;
 }
@@ -306,77 +379,119 @@ vec_insert(vec_t* vec, size_t idx, int32_t val) {
  * shifting all elements after it to the left.
  * Optionally sets `removed` to the removed value.
  *
+ * If `VEC_DISABLE_SHRINK` isn't defined and
+ * the length of `vec` is less than 1/4 it's capacity
+ * it will reallocate halving it's size.
+ *
  * [Returns] `INVARG` if the vector is NULL,
  * `IOOB` if the index is out of bounds,
- * `NOMEM` if fails to allocate menory or `OK` otherwise.
+ * `NOMEM` if fails to allocate memory or `OK` otherwise.
  */
 vec_err_t
-vec_remove(vec_t* vec, size_t idx, int32_t* removed) {
+vec_remove(vec_t* vec, size_t idx, void* removed) {
     if (vec == NULL) {
         return VEC_ERR_INVARG;
     }
     if (idx >= vec->len) {
         return VEC_ERR_IOOB;
     }
-
     if (removed != NULL) {
-        *removed = vec->elems[idx];
+        vec_get(vec, idx, removed);
     }
 
-    for (size_t i = idx; i < vec->len - 1; ++i) {
-        vec->elems[i] = vec->elems[i + 1];
-    }
+    memmove((uint8_t*) vec->elems + idx * vec->elem_size,
+            (uint8_t*) vec->elems + (idx + 1) * vec->elem_size,
+           (vec->len - idx - 1) * vec->elem_size);
 
     --vec->len;
 
+#if !defined(VEC_DISABLE_SHRINK)
+
     return vec_check_shrink(vec);
-}
 
-/*
- * Swaps the elements of `vec` at `idx1` at and `idx2`.
- *
- * [Returns] `INVARG` if the vector is NULL,
- * `IOOB` if any index is out of bounds or `OK` otherwise.
- */
-vec_err_t
-vec_swap(vec_t* vec, size_t idx1, size_t idx2) {
-    int old_val;
-
-    if (vec == NULL) {
-        return VEC_ERR_INVARG;
-    }
-    if (idx2 >= vec->len) {
-        return VEC_ERR_IOOB;
-    }
-
-    vec_err_t op_status = vec_replace(vec, idx1, vec->elems[idx2], &old_val);
-    if (op_status != VEC_ERR_OK) {
-        return op_status;
-    }
-
-    vec->elems[idx2] = old_val;
+#endif /* #if !defined () */
 
     return VEC_ERR_OK;
 }
 
 /*
- * Sets the parameter `val` with the element at `idx` of `vec`.
+ * Inserts `val` at the end of `vec`.
+ *
+ * If it has no space left it reallocates,
+ * doubling it's size
+ *
+ * [Returns] `INVARG` if the vector is NULL,
+ * `INVOP` if it has reached maximum capacity,
+ * `NOMEM` if fails to allocate memory or `OK` otherwise.
+ */
+vec_err_t
+vec_push(vec_t* vec, const void* val) {
+    return vec_insert(vec, vec->len, val);
+}
+
+/*
+ * Removes the last element of `vec` and
+ * optionally sets `popped` to the removed value.
+ *
+ * If `VEC_DISABLE_SHRINK` isn't defined and
+ * the length of `vec` is less than 1/4 it's capacity
+ * it will reallocate halving it's size.
+ *
+ * [Returns] `INVARG` if the vector is NULL 
+ * `INVOP` if the vector is empty, `NOMEM` if fails
+ * to allocate memory or `OK` otherwise.
+ */
+vec_err_t
+vec_pop(vec_t* vec, void* popped) {
+    if (vec_is_empty(vec)) {
+        return VEC_ERR_INVOP;
+    }
+
+    return vec_remove(vec, vec->len - 1, popped);
+}
+
+
+
+/* === Read Operations === */
+
+/*
+ * Sets the parameter `dest` with the value of `vec` at `idx`.
  *
  * [Returns] `INVARG` if any of the parameters are NULL,
  * `IOOB` if any index is out of bounds or `OK` otherwise.
  */
 vec_err_t
-vec_get(const vec_t* vec, size_t idx, int32_t* val) {
-    if (vec == NULL || val == NULL) {
+vec_get(const vec_t* vec, size_t idx, void* dest) {
+    if (vec == NULL || dest == NULL) {
         return VEC_ERR_INVARG;
     }
     if (idx >= vec->len) {
         return VEC_ERR_IOOB;
     }
 
-    *val = vec->elems[idx];
+    vec_write_var(vec, idx, dest);
 
     return VEC_ERR_OK;
+}
+
+/*
+ * Sets `first` to the first element of `vec`.
+ *
+ * [Returns] `IOOB` if empty or `OK` otherwise
+ */
+vec_err_t
+vec_first(const vec_t* vec, void* first) {
+    return vec_get(vec, 0, first);
+}
+
+/*
+ * Sets `last` to the last element of `vec`.
+ *
+ * [Returns] `IOOB` if empty or `OK` otherwise
+ */
+vec_err_t
+vec_last(const vec_t* vec, void* last) {
+    return vec_get(vec, vec->len - 1, last);
 }
 
 /*
@@ -396,17 +511,33 @@ vec_len(const vec_t* vec, size_t* len) {
 }
 
 /*
- * Sets `len` to the length of `vec`.
+ * Sets `cap` to the capacity of `vec`.
  *
- * [Returns] `INVARG` if any of the parameters are NULL,
+ * [Returns] `INVARG` if any of the parameters are NULL, or `OK` otherwise.
  */
-size_t
+vec_err_t
 vec_capacity(const vec_t* vec, size_t* cap) {
     if (vec == NULL || cap == NULL) {
         return VEC_ERR_INVARG;
     }
 
-    *cap = vec->capacity - vec->len;
+    *cap = vec->capacity;
+
+    return VEC_ERR_OK;
+}
+
+/*
+ * Sets `space` to the space left in `vec`.
+ *
+ * [Returns] `INVARG` if any of the parameters are NULL,
+ */
+vec_err_t
+vec_space(const vec_t* vec, size_t* space) {
+    if (vec == NULL || space == NULL) {
+        return VEC_ERR_INVARG;
+    }
+
+    *space = vec->capacity - vec->len;
 
     return VEC_ERR_OK;
 }
@@ -414,13 +545,9 @@ vec_capacity(const vec_t* vec, size_t* cap) {
 /*
  * [Returns] 1 if `vec` is empty or NULL and 0 otherwise.
  */
-int32_t
+bool
 vec_is_empty(const vec_t* vec) {
-    if (vec == NULL) {
-        return 1;
-    }
-
-    return vec->len == 0;
+    return vec == NULL || vec->len == 0;
 }
 
 /*
@@ -434,31 +561,26 @@ vec_display(const vec_t* vec) {
         return VEC_ERR_INVARG;
     }
     if (vec_is_empty(vec)) {
-        printf("[ ]");
+        printf("[ ]\n");
         return VEC_ERR_OK;
     }
 
+    uint8_t* byte_p = (uint8_t*) vec->elems;
+
     printf("[ ");
-    for (size_t i = 0; i < vec->len - 1; ++i) {
-        printf("%d, ", vec->elems[i]);
+    for (size_t i = 0; i < vec->len; ++i) {
+        printf("0x");
+        for (int j = 0; j < vec->elem_size; ++j) {
+            printf("%02X", byte_p[i * vec->elem_size + j]);
+        }
+
+        if (i != vec->len - 1) {
+            printf(", ");
+        }
     }
-    printf("%d ]\n", vec->elems[vec->len - 1]);
+    printf(" ]\n");
 
     return VEC_ERR_OK;
-}
-
-/*
- * [Returns] the printable version of a
- * `vec_err_t` or NULL if `err`
- * doesn't belog to the enum.
- */
-const char*
-vec_get_err_msg(vec_err_t err) {
-    if (err >= VEC_ERR_COUNT) {
-        return NULL;
-    }
-
-    return VEC_ERR_MSG[err];
 }
 
 /*
@@ -472,16 +594,43 @@ _vec_debug(const vec_t* vec) {
         return VEC_ERR_INVARG;
     }
     if (vec->capacity == 0) {
-        printf("[ ]");
+        printf("[ ]\n");
         return VEC_ERR_OK;
     }
 
+    uint8_t* byte_p = (uint8_t*) vec->elems;
+
     printf("len: %lu, cap: %lu\n", vec->len, vec->capacity);
     printf("[ ");
-    for (size_t i = 0; i < vec->capacity - 1; ++i) {
-        printf("%d, ", i >= vec->len ? 0 : vec->elems[i]);
+    for (size_t i = 0; i < vec->capacity; ++i) {
+        printf("0x");
+        for (int j = 0; j < vec->elem_size; ++j) {
+            printf("%02X", i >= vec->len ? 0 : byte_p[i * vec->elem_size + j]);
+        }
+
+        if (i != vec->capacity - 1) {
+            printf(", ");
+        }
     }
-    printf("%d ]\n", vec->len != vec->capacity ? 0 : vec->elems[vec->capacity - 1]);
+    printf(" ]\n");
 
     return VEC_ERR_OK;
+}
+
+
+
+/* === Error Handling === */
+  
+/*
+ * [Returns] the printable version of a
+ * `vec_err_t` or NULL if `err`
+ * doesn't belog to the enum.
+ */
+const char*
+vec_get_err_msg(vec_err_t err) {
+    if (err >= VEC_ERR_COUNT || err < 0) {
+        return NULL;
+    }
+
+    return VEC_ERR_MSG[err];
 }
