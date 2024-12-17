@@ -1,2 +1,2 @@
-# vec
-Vector implementation in C with robust error handling.
+# vec_t
+vector implementation in C with robust error handling
