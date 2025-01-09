@@ -31,7 +31,7 @@ typedef struct vec {
  * Mapping between values of 'vec_err_t'
  * and their printable values
  */
-const char* const VEC_ERR_MSG[] = {
+static const char* const VEC_ERR_MSG[] = {
     "VEC_ERR_OK",
     "VEC_ERR_IOOB",
     "VEC_ERR_INVARG",
@@ -297,23 +297,28 @@ vec_fill(vec_t* vec, const void* val, size_t len) {
  * capacity will be the length of `src`.
  *
  * [Returns] `INVARG` if the `src` or `dst` are NULL
+ *  or if their element size do not match,
  * `NOMEM` if fails to allocate memory or `OK` otherwise.
  */
 vec_err_t
 vec_clone(const vec_t* src, vec_t** dst) {
-    if (dst == NULL || src == NULL) {
+    if (dst == NULL || src == NULL || (*dst != NULL && (*dst)->elem_size != src->elem_size)) {
         return VEC_ERR_INVARG;
     }
 
-    if ((*dst) != NULL && (*dst)->capacity < src->len) {
-        vec_free(dst);
-    }
-    if (*dst == NULL) {
-        vec_err_t make_status = vec_make(dst, src->elem_size, src->len);
+    if (*dst == NULL || (*dst)->capacity < src->len) {
+        vec_t *clone = NULL;
+        vec_err_t make_status = vec_make(&clone, src->elem_size, src->len);
 
         if (make_status != VEC_ERR_OK) {
             return make_status;
         }
+
+        if (*dst != NULL) {
+            vec_free(dst);
+        }
+
+        *dst = clone;
     }
 
     memcpy((*dst)->elems, src->elems, src->len * src->elem_size);
@@ -334,8 +339,6 @@ vec_destroy(vec_t** vec) {
     }
 
     vec_free(vec);
-
-    vec = NULL;
 }
 
 
@@ -400,11 +403,13 @@ vec_swap(vec_t* vec, size_t idx1, size_t idx2) {
         return VEC_ERR_IOOB;
     }
 
-    uint8_t temp[vec->elem_size];
+    uint8_t* temp = malloc(vec->elem_size);
 
     vec_write_var(vec, idx1, temp);
     vec_write_idx(vec, idx1, (uint8_t*) vec->elems + idx2 * vec->elem_size);
     vec_write_idx(vec, idx2, temp);
+
+    free(temp);
 
     return VEC_ERR_OK;
 }
@@ -476,9 +481,11 @@ vec_remove(vec_t* vec, size_t idx, void* removed) {
         vec_get(vec, idx, removed);
     }
 
-    memmove((uint8_t*) vec->elems + idx * vec->elem_size,
-            (uint8_t*) vec->elems + (idx + 1) * vec->elem_size,
-           (vec->len - idx - 1) * vec->elem_size);
+    if (idx != vec->len - 1) {
+        memmove((uint8_t*) vec->elems + idx * vec->elem_size,
+                (uint8_t*) vec->elems + (idx + 1) * vec->elem_size,
+                (vec->len - idx - 1) * vec->elem_size);
+    }
 
     --vec->len;
 
