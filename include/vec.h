@@ -78,6 +78,18 @@ extern vec_err_t
 vec_clear(vec_t* vec);
 
 /*
+ * If `dest` is NULL makes a new vector containing
+ * a copy of the elements of `src` in `dest`
+ * Else `dest` is reallocated if necessary and the
+ * elements of `src` are copied into it.
+ *
+ * [Returns] `INVARG` if the `src` or `dest` are NULL,
+ * `NOMEM` if fails to allocate memory `OK` otherwise.
+ */
+extern vec_err_t
+vec_clone(vec_t* src, vec_t** dest);
+
+/*
  * Destroys the instance of vec_t.
  */
 extern void

@@ -74,6 +74,17 @@ vec_reallocate(vec_t* vec, size_t capacity) {
 }
 
 /*
+ * Destroys the instance of vec_t.
+ */
+static void
+vec_free(vec_t** vec) {
+    free((*vec)->elems);
+    free(*vec);
+
+    *vec = NULL;
+}
+
+/*
  * Reallocates the vector if `GROW_POLICY` is fulfilled, doubling it's capacity.
  *
  * [Returns] `NOMEM` if fails to allocate memory,
@@ -249,6 +260,44 @@ vec_clear(vec_t* vec) {
 }
 
 /*
+ * If `dest` is NULL or hasn't enough capacity
+ * makes a new vector containing a copy of
+ * the elements of `src` in `dest`.
+ * Else the elements of `src` are copied into `dest`.
+ * Note that if `dest` is reallocated, it's
+ * capacity will be the length of `src`.
+ *
+ * [Returns] `INVARG` if the `src` or `dest` are NULL or
+ * they have differenct elem size, `NOMEM` if fails to
+ * allocate memory or `OK` otherwise.
+ */
+extern vec_err_t
+vec_clone(vec_t* src, vec_t** dest) {
+    if (dest == NULL || src == NULL) {
+        return VEC_ERR_INVARG;
+    }
+    if (*dest != NULL && ((*dest)->elem_size != src->elem_size)) {
+        return VEC_ERR_INVARG;
+    }
+
+    if ((*dest) != NULL && (*dest)->capacity < src->len) {
+        vec_free(dest);
+    }
+    if (*dest == NULL) {
+        vec_err_t make_status = vec_make(dest, src->elem_size, src->len);
+
+        if (make_status != VEC_ERR_OK) {
+            return make_status;
+        }
+    }
+
+    memcpy((*dest)->elems, src->elems, src->len * src->elem_size);
+    (*dest)->len = src->len;
+
+    return VEC_ERR_OK;
+}
+
+/*
  * Destroys the instance of vec_t.
  */
 void
@@ -257,8 +306,7 @@ vec_destroy(vec_t** vec) {
         return;
     }
 
-    free((*vec)->elems);
-    free(*vec);
+    vec_free(vec);
 
     vec = NULL;
 }
