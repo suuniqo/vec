@@ -78,16 +78,26 @@ extern vec_err_t
 vec_clear(vec_t* vec);
 
 /*
- * If `dest` is NULL makes a new vector containing
- * a copy of the elements of `src` in `dest`
- * Else `dest` is reallocated if necessary and the
+ * Fills the first `len` positions of the vector with `val`.
+ * If it hasn't enough capacity it is reallocated to hold `len` elements.
+ *
+ * [Returns] `INVARG` if the `vec` or `val` are NULL
+ * `NOMEM` if fails to allocate memory or `OK` otherwise.
+ */
+extern vec_err_t
+vec_fill(vec_t* vec, const void* val, size_t len);
+
+/*
+ * If `dst` is NULL makes a new vector containing
+ * a copy of the elements of `src` in `dst`
+ * Else `dst` is reallocated if necessary and the
  * elements of `src` are copied into it.
  *
- * [Returns] `INVARG` if the `src` or `dest` are NULL,
+ * [Returns] `INVARG` if the `src` or `dst` are NULL,
  * `NOMEM` if fails to allocate memory `OK` otherwise.
  */
 extern vec_err_t
-vec_clone(vec_t* src, vec_t** dest);
+vec_clone(const vec_t* src, vec_t** dst);
 
 /*
  * Destroys the instance of vec_t.
@@ -196,13 +206,13 @@ vec_pop(vec_t* vec, void* popped);
 /* === Read Operations === */
 
 /*
- * Sets the parameter `dest` with the value of `vec` at `idx`.
+ * Sets the parameter `dst` with the value of `vec` at `idx`.
  *
  * [Returns] `INVARG` if any of the parameters are NULL,
  * `IOOB` if any index is out of bounds or `OK` otherwise.
  */
 extern vec_err_t
-vec_get(const vec_t* vec, size_t idx, void* dest);
+vec_get(const vec_t* vec, size_t idx, void* dst);
 
 /*
  * Sets `first` to the first element of `vec`.

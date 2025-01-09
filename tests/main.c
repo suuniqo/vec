@@ -63,6 +63,9 @@ int main(void) {
             case '8':
                 err = vec_resize(vec, 20);
                 break;
+            case '9':
+                err = vec_fill(vec, &input, 60);
+                break;
             default:
                 break;
         }

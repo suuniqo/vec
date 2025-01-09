@@ -131,11 +131,11 @@ vec_write_idx(vec_t* vec, size_t idx, const void* src) {
 }
 
 /*
- * Writes into `dest` the contents of `vec` at `idx`.
+ * Writes into `dst` the contents of `vec` at `idx`.
  */
 static void
-vec_write_var(const vec_t* vec, size_t idx, void* dest) {
-    memcpy(dest, (uint8_t*) vec->elems + idx * vec->elem_size, vec->elem_size);
+vec_write_var(const vec_t* vec, size_t idx, void* dst) {
+    memcpy(dst, (uint8_t*) vec->elems + idx * vec->elem_size, vec->elem_size);
 }
 
 
@@ -260,42 +260,69 @@ vec_clear(vec_t* vec) {
 }
 
 /*
- * If `dest` is NULL or hasn't enough capacity
- * makes a new vector containing a copy of
- * the elements of `src` in `dest`.
- * Else the elements of `src` are copied into `dest`.
- * Note that if `dest` is reallocated, it's
- * capacity will be the length of `src`.
+ * Fills the first `len` positions of the vector with `val`.
+ * If it hasn't enough capacity it is reallocated to hold `len` elements.
  *
- * [Returns] `INVARG` if the `src` or `dest` are NULL or
- * they have differenct elem size, `NOMEM` if fails to
- * allocate memory or `OK` otherwise.
+ * [Returns] `INVARG` if the `vec` or `val` are NULL,
+ * `NOMEM` if fails to allocate memory or `OK` otherwise.
  */
-extern vec_err_t
-vec_clone(vec_t* src, vec_t** dest) {
-    if (dest == NULL || src == NULL) {
+vec_err_t
+vec_fill(vec_t* vec, const void* val, size_t len) {
+    if (vec == NULL || val == NULL) {
         return VEC_ERR_INVARG;
     }
-    if (*dest != NULL && ((*dest)->elem_size != src->elem_size)) {
+    if (vec->capacity < len) {
+        vec_err_t resize_status = vec_resize(vec, len);
+
+        if (resize_status != VEC_ERR_OK) {
+            return resize_status;
+        }
+
+        vec->len = len;
+    }
+
+    for (size_t idx = 0; idx < len; ++idx) {
+        memcpy((uint8_t*) vec->elems + idx * vec->elem_size, val, vec->elem_size);
+    }
+
+    return VEC_ERR_OK;
+}
+
+/*
+ * If `dst` is NULL or hasn't enough capacity
+ * makes a new vector containing a copy of
+ * the elements of `src` in `dst`.
+ * Else the elements of `src` are copied into `dst`.
+ * Note that if `dst` is reallocated, it's
+ * capacity will be the length of `src`.
+ *
+ * [Returns] `INVARG` if the `src` or `dst` are NULL
+ * `NOMEM` if fails to allocate memory or `OK` otherwise.
+ */
+vec_err_t
+vec_clone(const vec_t* src, vec_t** dst) {
+    if (dst == NULL || src == NULL) {
         return VEC_ERR_INVARG;
     }
 
-    if ((*dest) != NULL && (*dest)->capacity < src->len) {
-        vec_free(dest);
+    if ((*dst) != NULL && (*dst)->capacity < src->len) {
+        vec_free(dst);
     }
-    if (*dest == NULL) {
-        vec_err_t make_status = vec_make(dest, src->elem_size, src->len);
+    if (*dst == NULL) {
+        vec_err_t make_status = vec_make(dst, src->elem_size, src->len);
 
         if (make_status != VEC_ERR_OK) {
             return make_status;
         }
     }
 
-    memcpy((*dest)->elems, src->elems, src->len * src->elem_size);
-    (*dest)->len = src->len;
+    memcpy((*dst)->elems, src->elems, src->len * src->elem_size);
+    (*dst)->len = src->len;
 
     return VEC_ERR_OK;
 }
+
+
 
 /*
  * Destroys the instance of vec_t.
@@ -393,14 +420,15 @@ vec_swap(vec_t* vec, size_t idx1, size_t idx2) {
  * If it has no space left it reallocates,
  * doubling it's size
  *
- * [Returns] `INVARG` if the vector is NULL,
+ * [Returns] `INVARG` if `vec` or `val` is NULL,
+ * `IOOB` if any index is out of bounds or `OK` otherwise.
  * `IOOB` if the index is out of bounds,
  * `INVOP` if it has reached maximum capacity,
  * `NOMEM` if fails to allocate memory or `OK` otherwise.
  */
 vec_err_t
 vec_insert(vec_t* vec, size_t idx, const void* val) {
-    if (vec == NULL) {
+    if (vec == NULL || val == NULL) {
         return VEC_ERR_INVARG;
     }
     if (idx > vec->len) {
@@ -431,7 +459,8 @@ vec_insert(vec_t* vec, size_t idx, const void* val) {
  * the length of `vec` is less than 1/4 it's capacity
  * it will reallocate halving it's size.
  *
- * [Returns] `INVARG` if the vector is NULL,
+ * [Returns] `INVARG` if the vector is NULL
+ *  or `removed` has a different size than the one expexted by `vec`,
  * `IOOB` if the index is out of bounds,
  * `NOMEM` if fails to allocate memory or `OK` otherwise.
  */
@@ -503,21 +532,21 @@ vec_pop(vec_t* vec, void* popped) {
 /* === Read Operations === */
 
 /*
- * Sets the parameter `dest` with the value of `vec` at `idx`.
+ * Sets the parameter `dst` with the value of `vec` at `idx`.
  *
  * [Returns] `INVARG` if any of the parameters are NULL,
  * `IOOB` if any index is out of bounds or `OK` otherwise.
  */
 vec_err_t
-vec_get(const vec_t* vec, size_t idx, void* dest) {
-    if (vec == NULL || dest == NULL) {
+vec_get(const vec_t* vec, size_t idx, void* dst) {
+    if (vec == NULL || dst == NULL) {
         return VEC_ERR_INVARG;
     }
     if (idx >= vec->len) {
         return VEC_ERR_IOOB;
     }
 
-    vec_write_var(vec, idx, dest);
+    vec_write_var(vec, idx, dst);
 
     return VEC_ERR_OK;
 }
@@ -525,7 +554,8 @@ vec_get(const vec_t* vec, size_t idx, void* dest) {
 /*
  * Sets `first` to the first element of `vec`.
  *
- * [Returns] `IOOB` if empty or `OK` otherwise
+ * [Returns] `INVARG` if `vec` or `last` are NULL
+ * `IOOB` if empty or `OK` otherwise
  */
 vec_err_t
 vec_first(const vec_t* vec, void* first) {
@@ -535,7 +565,8 @@ vec_first(const vec_t* vec, void* first) {
 /*
  * Sets `last` to the last element of `vec`.
  *
- * [Returns] `IOOB` if empty or `OK` otherwise
+ * [Returns] `INVARG` if `vec` or `last` are NULL
+ * `IOOB` if empty or `OK` otherwise
  */
 vec_err_t
 vec_last(const vec_t* vec, void* last) {
