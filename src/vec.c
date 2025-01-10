@@ -43,7 +43,7 @@ static const char* const VEC_ERR_MSG[] = {
 #define MAX_CAPACITY INT_MAX                    /* Maximum capacity of the vector */
 #define MAX_DATA_SIZE INT_MAX                   /* Maximum size in bytes of elements */
 
-#define SHRINK_POLICY 4                         /* Minimum ratio of len / capacity */
+#define SHRINK_POLICY 4                         /* Minimum ratio of capacity / len */
 #define SHRINK_FACTOR 2                         /* Factor by which the capacity shrinks */
 
 #define GROWTH_POLICY 1                         /* Maximum ratio of len / capacity */
