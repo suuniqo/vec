@@ -285,10 +285,13 @@ extern vec_err_t
 vec_space(const vec_t* vec, size_t* space);
 
 /*
- * [Returns] 1 if `vec` is empty or NULL and 0 otherwise.
+ * Sets `is_empty` to 1 if the length of the vector is 0, or to 0 otherwise.
+ *
+ * [Returns] `NULLPTR` if any of the parameters are NULL,
+ * `INVPTR` if the vector pointer validation fails, or `OK` otherwise.
  */
-extern bool
-vec_is_empty(const vec_t* vec);
+extern vec_err_t
+vec_is_empty(const vec_t* vec, bool* is_empty);
 
 /*
  * Prints the formatted contents of `vec`.
@@ -307,7 +310,6 @@ vec_display(const vec_t* vec);
  */
 extern vec_err_t
 _vec_debug(const vec_t* vec);
-
 
 
 /* === Error Handling === */
