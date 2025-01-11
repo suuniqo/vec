@@ -2,10 +2,11 @@
 
 #include <limits.h>
 #include <stdlib.h>
-#include "../include/vec.h"
 #include <stdio.h>
 
 #define VEC_DISABLE_SHRINK
+#include "../include/vec.h"
+
 
 typedef struct person {
     int age;
@@ -116,15 +117,6 @@ int main(void) {
 
     char out = 0;;
     char input = 33;
-
-    int tests = 1000;
-    int len = 100000;
-
-    for (int i = 0; i < tests; i++) {
-        vec_fill(vec, &input, len);
-    }
-
-    return 0;
 
     while (c != 'Q') {
         c = getchar();

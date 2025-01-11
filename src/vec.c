@@ -598,6 +598,9 @@ vec_push(vec_t* vec, const void* val) {
  */
 vec_err_t
 vec_pop(vec_t* vec, void* popped) {
+    if (vec == NULL) {
+        return VEC_ERR_NULLPTR;
+    }
     if (vec->len == 0) {
         return VEC_ERR_INVOP;
     }
@@ -761,7 +764,7 @@ vec_display(const vec_t* vec) {
     printf("[ ");
     for (size_t i = 0; i < vec->len; ++i) {
         printf("0x");
-        for (int j = 0; j < vec->elem_size; ++j) {
+        for (size_t j = 0; j < vec->elem_size; ++j) {
             printf("%02X", byte_p[i * vec->elem_size + j]);
         }
 
@@ -799,7 +802,7 @@ _vec_debug(const vec_t* vec) {
     printf("[ ");
     for (size_t i = 0; i < vec->capacity; ++i) {
         printf("0x");
-        for (int j = 0; j < vec->elem_size; ++j) {
+        for (size_t j = 0; j < vec->elem_size; ++j) {
             printf("%02X", i >= vec->len ? 0 : byte_p[i * vec->elem_size + j]);
         }
 
@@ -811,7 +814,6 @@ _vec_debug(const vec_t* vec) {
 
     return VEC_ERR_OK;
 }
-
 
 
 /* === Error Handling === */
