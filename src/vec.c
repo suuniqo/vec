@@ -19,7 +19,7 @@
  * it is constant
  */
 typedef struct vec {
-    uint32_t magic;                             /* Magic number for ptr validation*/
+    uint32_t magic;                             /* Magic number for ptr validation */
     size_t len;                                 /* Current number of elements */
     size_t capacity;                            /* Current allocated memory */
     size_t elem_size;                           /* Size of the data type stored */
@@ -53,6 +53,7 @@ static const char* const VEC_ERR_MSG[] = {
 #define VECTOR_MAGIC 0xF3EDB4BE                 /* Magic value for vec pointer validation */
 
 
+
 /* ========== PRIVATE ========== */
 
 /* === Reallocation === */
@@ -72,6 +73,7 @@ vec_reallocate(vec_t* vec, size_t capacity) {
 
     vec->elems = new_elems;
     vec->capacity = capacity;
+    vec->len = vec->len > capacity ? capacity : vec->len;
 
     return VEC_ERR_OK;
 }
@@ -122,7 +124,6 @@ vec_check_shrink(vec_t* vec) {
 }
 
 
-
 /* === Writing === */
 
 /*
@@ -140,7 +141,6 @@ static void
 vec_write_var(const vec_t* vec, size_t idx, void* dst) {
     memcpy(dst, (uint8_t*) vec->elems + idx * vec->elem_size, vec->elem_size);
 }
-
 
 
 /* ========== PUBLIC ========== */
@@ -280,6 +280,7 @@ vec_clear(vec_t* vec) {
  * If it hasn't enough capacity it is reallocated to hold `len` elements.
  *
  * [Returns] `NULLPTR` if the `vec` or `val` are NULL,
+ * `INVOP` if `len` isn't in the valid range,
  * `INVPTR` if the vector pointer validation fails,
  * `NOMEM` if fails to allocate memory or `OK` otherwise.
  */
@@ -297,7 +298,8 @@ vec_fill(vec_t* vec, const void* val, size_t len) {
         if (resize_status != VEC_ERR_OK) {
             return resize_status;
         }
-
+    }
+    if (vec->len < len) {
         vec->len = len;
     }
 
@@ -318,7 +320,7 @@ vec_fill(vec_t* vec, const void* val, size_t len) {
  *
  * [Returns] `NULLPTR` if the `src` or `dst` are NULL,
  * `INVPTR` if the vector pointer validation fails,
- * `INVOP` if their element size do not match,
+ * `INVOP` if their element size do not match or dst points to src,
  * `NOMEM` if fails to allocate memory or `OK` otherwise.
  */
 vec_err_t
@@ -333,7 +335,7 @@ vec_clone(const vec_t* src, vec_t** dst) {
         if ((*dst)->magic != VECTOR_MAGIC) {
             return VEC_ERR_INVPTR;
         }
-        if ((*dst)->elem_size != src->elem_size) {
+        if ((*dst)->elem_size != src->elem_size || *dst == src) {
             return VEC_ERR_INVOP;
         }
     }
@@ -359,7 +361,6 @@ vec_clone(const vec_t* src, vec_t** dst) {
     return VEC_ERR_OK;
 }
 
-
 /*
  * Destroys the instance of vec_t.
  *
@@ -379,7 +380,6 @@ vec_destroy(vec_t** vec) {
 
     return VEC_ERR_OK;
 }
-
 
 
 /* === Write Operations === */
@@ -590,7 +590,7 @@ vec_push(vec_t* vec, const void* val) {
  */
 vec_err_t
 vec_pop(vec_t* vec, void* popped) {
-    if (vec_is_empty(vec)) {
+    if (vec->len == 0) {
         return VEC_ERR_INVOP;
     }
 
@@ -710,7 +710,10 @@ vec_space(const vec_t* vec, size_t* space) {
 }
 
 /*
- * [Returns] 1 if `vec` is empty or NULL and 0 otherwise.
+ * Sets `is_empty` to 1 if the length of the vector is 0, or to 0 otherwise.
+ *
+ * [Returns] `NULLPTR` if any of the parameters are NULL,
+ * `INVPTR` if the vector pointer validation fails, or `OK` otherwise.
  */
 vec_err_t
 vec_is_empty(const vec_t* vec, bool* is_empty) {
