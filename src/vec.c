@@ -292,6 +292,9 @@ vec_fill(vec_t* vec, const void* val, size_t len) {
     if (vec->magic != VECTOR_MAGIC) {
         return VEC_ERR_INVPTR;
     }
+    if (len == 0) {
+        return VEC_ERR_OK;
+    }
     if (vec->capacity < len) {
         vec_err_t resize_status = vec_resize(vec, len);
 
@@ -303,9 +306,14 @@ vec_fill(vec_t* vec, const void* val, size_t len) {
         vec->len = len;
     }
 
-    for (size_t idx = 0; idx < len; ++idx) {
-        memcpy((uint8_t*) vec->elems + idx * vec->elem_size, val, vec->elem_size);
+    memcpy((uint8_t*) vec->elems, val, vec->elem_size);
+
+    size_t offset;
+    for (offset = 1; offset << 1 < len; offset <<= 1) {
+        memcpy((uint8_t*) vec->elems + offset * vec->elem_size, vec->elems, offset * vec->elem_size);
     }
+
+    memcpy((uint8_t*) vec->elems + offset * vec->elem_size, vec->elems, (len - offset) * vec->elem_size);
 
     return VEC_ERR_OK;
 }

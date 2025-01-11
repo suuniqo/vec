@@ -117,6 +117,15 @@ int main(void) {
     char out = 0;;
     char input = 33;
 
+    int tests = 1000;
+    int len = 100000;
+
+    for (int i = 0; i < tests; i++) {
+        vec_fill(vec, &input, len);
+    }
+
+    return 0;
+
     while (c != 'Q') {
         c = getchar();
         if (c == '\n') {
@@ -149,13 +158,13 @@ int main(void) {
                 err = vec_resize(vec, 20);
                 break;
             case '9':
-                err = vec_fill(vec, &input, INT_MAX);
+                err = vec_fill(vec, &input, 2);
                 break;
             default:
                 break;
         }
 
-        //_vec_debug(vec);
+        _vec_debug(vec);
         //vec_display(vec);
         printf("out was: %c\n", out);
         size_t len = 0;
