@@ -225,7 +225,7 @@ vec_fill(vec_t* vec, const void* val, size_t len);
  * the length of `vec` is less than 1/4 it's capacity
  * it will reallocate halving it's size.
  *
- * [Returns] `NULLPTR` if the `vec` or `val` are NULL,
+ * [Returns] `NULLPTR` if `vec` is NULL,
  * `INVPTR` if the vector pointer validation fails,
  * `NOMEM` if fails to allocate memory or `OK` otherwise.
  */
