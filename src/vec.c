@@ -5,6 +5,7 @@
 /* ========= INCLUDES ========== */
 
 #include <limits.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -15,8 +16,8 @@
 /*
  * Dynamic array of variable length,
  * resizes and shrinks dynamically
- * which can store data of any size while 
- * it is constant
+ * which can store data of any type 
+ * while it's size is constant.
  */
 typedef struct vec {
     uint32_t magic;                             /* Magic number for ptr validation */
@@ -28,7 +29,7 @@ typedef struct vec {
 
 /*
  * Mapping between values of 'vec_err_t'
- * and their printable values
+ * and their printable values.
  */
 static const char* const VEC_ERR_MSG[] = {
     "VEC_ERR_OK",
@@ -59,12 +60,12 @@ static const char* const VEC_ERR_MSG[] = {
 /* === Reallocation === */
 
 /*
- * Reallocates the vector with `capacity` memory
+ * Reallocates the vector with `capacity` memory.
  *
  * [Returns] `NOMEM` if fails to allocate memory `OK` otherwise.
  */
 static vec_err_t
-vec_reallocate(vec_t* vec, size_t capacity) {
+_vec_reallocate(vec_t* vec, size_t capacity) {
     void* new_elems = realloc(vec->elems, capacity * vec->elem_size); 
 
     if (new_elems == NULL) {
@@ -82,7 +83,7 @@ vec_reallocate(vec_t* vec, size_t capacity) {
  * Destroys the instance of vec_t.
  */
 static void
-vec_free(vec_t** vec) {
+_vec_free(vec_t** vec) {
     free((*vec)->elems);
     free(*vec);
 
@@ -96,7 +97,7 @@ vec_free(vec_t** vec) {
  * `INVOP` if growing would surpass maximum space or `OK` otherwise.
  */
 static vec_err_t
-vec_check_grow(vec_t* vec) {
+_vec_check_grow(vec_t* vec) {
     if (vec->len < vec->capacity * GROWTH_POLICY) {
         return VEC_ERR_OK;
     }
@@ -105,7 +106,7 @@ vec_check_grow(vec_t* vec) {
     }
 
     size_t new_capacity = vec->capacity * GROWTH_FACTOR;
-    return vec_reallocate(vec, MIN_CAPACITY > new_capacity ? MIN_CAPACITY : new_capacity);
+    return _vec_reallocate(vec, MIN_CAPACITY > new_capacity ? MIN_CAPACITY : new_capacity);
 }
 
 /*
@@ -114,13 +115,13 @@ vec_check_grow(vec_t* vec) {
  * [Returns] `NOMEM` if fails to allocate memory `OK` otherwise.
  */
 static vec_err_t
-vec_check_shrink(vec_t* vec) {
+_vec_check_shrink(vec_t* vec) {
     if (vec->len >= vec->capacity / SHRINK_POLICY || vec->capacity <= MIN_CAPACITY) {
         return VEC_ERR_OK;
     }
 
     size_t new_capacity = vec->capacity / SHRINK_FACTOR;
-    return vec_reallocate(vec, new_capacity < MIN_CAPACITY ? MIN_CAPACITY : new_capacity);
+    return _vec_reallocate(vec, new_capacity < MIN_CAPACITY ? MIN_CAPACITY : new_capacity);
 }
 
 
@@ -130,7 +131,7 @@ vec_check_shrink(vec_t* vec) {
  * Writes into `vec` at `idx` the contents of `src`.
  */
 static void
-vec_write_idx(vec_t* vec, size_t idx, const void* src) {
+_vec_write_idx(vec_t* vec, size_t idx, const void* src) {
     memcpy((uint8_t*) vec->elems + idx * vec->elem_size, src, vec->elem_size);
 }
 
@@ -138,7 +139,7 @@ vec_write_idx(vec_t* vec, size_t idx, const void* src) {
  * Writes into `dst` the contents of `vec` at `idx`.
  */
 static void
-vec_write_var(const vec_t* vec, size_t idx, void* dst) {
+_vec_write_var(const vec_t* vec, size_t idx, void* dst) {
     memcpy(dst, (uint8_t*) vec->elems + idx * vec->elem_size, vec->elem_size);
 }
 
@@ -210,7 +211,7 @@ vec_resize(vec_t* vec, size_t capacity) {
         return VEC_ERR_INVOP;
     }
 
-    return vec_reallocate(vec, capacity);
+    return _vec_reallocate(vec, capacity);
 }
 
 /*
@@ -236,7 +237,7 @@ vec_shrink_to_fit(vec_t* vec) {
         return VEC_ERR_OK;
     }
 
-    return vec_reallocate(vec, vec->len);
+    return _vec_reallocate(vec, vec->len);
 }
 
 /*
@@ -271,49 +272,6 @@ vec_clear(vec_t* vec) {
     vec->len = 0;
     vec->capacity = MIN_CAPACITY;
     vec->elems = new_elems;
-
-    return VEC_ERR_OK;
-}
-
-/*
- * Fills the first `len` positions of the vector with `val`.
- * If it hasn't enough capacity it is reallocated to hold `len` elements.
- *
- * [Returns] `NULLPTR` if the `vec` or `val` are NULL,
- * `INVOP` if `len` isn't in the valid range,
- * `INVPTR` if the vector pointer validation fails,
- * `NOMEM` if fails to allocate memory or `OK` otherwise.
- */
-vec_err_t
-vec_fill(vec_t* vec, const void* val, size_t len) {
-    if (vec == NULL || val == NULL) {
-        return VEC_ERR_NULLPTR;
-    }
-    if (vec->magic != VECTOR_MAGIC) {
-        return VEC_ERR_INVPTR;
-    }
-    if (len == 0) {
-        return VEC_ERR_OK;
-    }
-    if (vec->capacity < len) {
-        vec_err_t resize_status = vec_resize(vec, len);
-
-        if (resize_status != VEC_ERR_OK) {
-            return resize_status;
-        }
-    }
-    if (vec->len < len) {
-        vec->len = len;
-    }
-
-    memcpy((uint8_t*) vec->elems, val, vec->elem_size);
-
-    size_t offset;
-    for (offset = 1; offset << 1 < len; offset <<= 1) {
-        memcpy((uint8_t*) vec->elems + offset * vec->elem_size, vec->elems, offset * vec->elem_size);
-    }
-
-    memcpy((uint8_t*) vec->elems + offset * vec->elem_size, vec->elems, (len - offset) * vec->elem_size);
 
     return VEC_ERR_OK;
 }
@@ -357,7 +315,7 @@ vec_clone(const vec_t* src, vec_t** dst) {
         }
 
         if (*dst != NULL) {
-            vec_free(dst);
+            _vec_free(dst);
         }
 
         *dst = clone;
@@ -384,15 +342,13 @@ vec_destroy(vec_t** vec) {
         return VEC_ERR_INVPTR;
     }
 
-    vec_free(vec);
+    _vec_free(vec);
 
     return VEC_ERR_OK;
 }
 
 
 /* === Write Operations === */
-
-/* == In-Place == */
 
 /*
  * Sets the element at `idx` of `vec` with the value of `src`.
@@ -413,7 +369,7 @@ vec_set(vec_t* vec, size_t idx, const void* src) {
         return VEC_ERR_IOOB;
     }
 
-    vec_write_idx(vec, idx, src);
+    _vec_write_idx(vec, idx, src);
 
     return VEC_ERR_OK;
 }
@@ -437,8 +393,8 @@ vec_replace(vec_t* vec, size_t idx, const void* val, void* old_val) {
         return VEC_ERR_IOOB;
     }
 
-    vec_write_var(vec, idx, old_val);
-    vec_write_idx(vec, idx, val);
+    _vec_write_var(vec, idx, old_val);
+    _vec_write_idx(vec, idx, val);
 
     return VEC_ERR_OK;
 }
@@ -468,17 +424,14 @@ vec_swap(vec_t* vec, size_t idx1, size_t idx2) {
         return VEC_ERR_NOMEM;
     }
 
-    vec_write_var(vec, idx1, temp);
-    vec_write_idx(vec, idx1, (uint8_t*) vec->elems + idx2 * vec->elem_size);
-    vec_write_idx(vec, idx2, temp);
+    _vec_write_var(vec, idx1, temp);
+    _vec_write_idx(vec, idx1, (uint8_t*) vec->elems + idx2 * vec->elem_size);
+    _vec_write_idx(vec, idx2, temp);
 
     free(temp);
 
     return VEC_ERR_OK;
 }
-
-
-/* == Not In-Place == */
 
 /*
  * Inserts `val` at the position `idx`,
@@ -506,7 +459,7 @@ vec_insert(vec_t* vec, size_t idx, const void* val) {
         return VEC_ERR_IOOB;
     }
 
-    vec_err_t resize_status = vec_check_grow(vec);
+    vec_err_t resize_status = _vec_check_grow(vec);
     if (resize_status != VEC_ERR_OK) {
         return resize_status;
     }
@@ -516,7 +469,7 @@ vec_insert(vec_t* vec, size_t idx, const void* val) {
             (vec->len - idx) * vec->elem_size);
 
     ++vec->len;
-    vec_write_idx(vec, idx, val);
+    _vec_write_idx(vec, idx, val);
 
     return VEC_ERR_OK;
 }
@@ -533,7 +486,7 @@ vec_insert(vec_t* vec, size_t idx, const void* val) {
  * [Returns] `NULLPTR` if the vector is NULL
  * `INVPTR` if the vector pointer validation fails,
  * `IOOB` if the index is out of bounds,
- * `NOMEM` if fails to allocate memory or `OK` otherwise.
+ * `NOMEM` if fails to reallocate memory or `OK` otherwise.
  */
 vec_err_t
 vec_remove(vec_t* vec, size_t idx, void* removed) {
@@ -547,7 +500,7 @@ vec_remove(vec_t* vec, size_t idx, void* removed) {
         return VEC_ERR_IOOB;
     }
     if (removed != NULL) {
-        vec_write_var(vec, idx, removed);
+        _vec_write_var(vec, idx, removed);
     }
 
     if (idx != vec->len - 1) {
@@ -560,9 +513,9 @@ vec_remove(vec_t* vec, size_t idx, void* removed) {
 
 #if !defined(VEC_DISABLE_SHRINK)
 
-    return vec_check_shrink(vec);
+    return _vec_check_shrink(vec);
 
-#endif /* #if !defined () */
+#endif /* #if !defined(VEC_DISABLE_SHRINK) */
 
     return VEC_ERR_OK;
 }
@@ -594,7 +547,7 @@ vec_push(vec_t* vec, const void* val) {
  * [Returns] `NULLPTR` if the vector is NULL 
  * `INVPTR` if the vector pointer validation fails,
  * `INVOP` if the vector is empty, `NOMEM` if fails
- * to allocate memory or `OK` otherwise.
+ * to reallocate memory or `OK` otherwise.
  */
 vec_err_t
 vec_pop(vec_t* vec, void* popped) {
@@ -608,6 +561,131 @@ vec_pop(vec_t* vec, void* popped) {
     return vec_remove(vec, vec->len - 1, popped);
 }
 
+/*
+ * Fills the first `len` positions of the vector with `val`.
+ * If it hasn't enough capacity it is reallocated to hold `len` elements.
+ *
+ * [Returns] `NULLPTR` if the `vec` or `val` are NULL,
+ * `INVOP` if `len` isn't in the valid range,
+ * `INVPTR` if the vector pointer validation fails,
+ * `NOMEM` if fails to allocate memory or `OK` otherwise.
+ */
+vec_err_t
+vec_fill(vec_t* vec, const void* val, size_t len) {
+    if (vec == NULL || val == NULL) {
+        return VEC_ERR_NULLPTR;
+    }
+    if (vec->magic != VECTOR_MAGIC) {
+        return VEC_ERR_INVPTR;
+    }
+    if (len == 0) {
+        return VEC_ERR_OK;
+    }
+    if (vec->capacity < len) {
+        vec_err_t resize_status = vec_resize(vec, len);
+
+        if (resize_status != VEC_ERR_OK) {
+            return resize_status;
+        }
+    }
+    if (vec->len < len) {
+        vec->len = len;
+    }
+
+    memcpy((uint8_t*) vec->elems,
+            val,
+            vec->elem_size);
+
+    size_t offset;
+    for (offset = 1; offset << 1 < len; offset <<= 1) {
+        memcpy((uint8_t*) vec->elems + offset * vec->elem_size,
+                vec->elems,
+                offset * vec->elem_size);
+    }
+
+    memcpy((uint8_t*) vec->elems + offset * vec->elem_size,
+            vec->elems,
+           (len - offset) * vec->elem_size);
+
+    return VEC_ERR_OK;
+}
+
+/*
+ * Keeps the first `len` elements of `vec` and discards the rest.
+ * If `len` isn't smaller than the current length of `vec` it does nothing.
+ *
+ * If `VEC_DISABLE_SHRINK` isn't defined and
+ * the length of `vec` is less than 1/4 it's capacity
+ * it will reallocate halving it's size.
+ *
+ * [Returns] `NULLPTR` if the `vec` or `val` are NULL,
+ * `INVPTR` if the vector pointer validation fails,
+ * `NOMEM` if fails to allocate memory or `OK` otherwise.
+ */
+vec_err_t
+vec_truncate(vec_t* vec, size_t len) {
+    if (vec == NULL) {
+        return VEC_ERR_NULLPTR;
+    }
+    if (vec->magic != VECTOR_MAGIC) {
+        return VEC_ERR_INVPTR;
+    }
+    if (len >= vec->len) {
+        return VEC_ERR_OK;
+    }
+
+    vec->len = len;
+
+#if !defined(VEC_DISABLE_SHRINK)
+
+    return _vec_check_shrink(vec);
+
+#endif /* #if !defined(VEC_DISABLE_SHRINK) */
+
+    return VEC_ERR_OK;
+}
+
+/*
+ * Concatenates the contents of `other` into `self`.
+ * If self hasn't enough capacity it is reallocated.
+ *
+ * [Returns] `NULLPTR` if `self` or `other` are NULL,
+ * `INVPTR` if the vector pointer validation fails,
+ * `INVOP` if extending `self` would surpass the maximum capacity
+ *  `self` equals `other`, or they do not have the same element size,
+ * `NOMEM` if fails to reallocate memory or `OK` otherwise.
+ */
+vec_err_t
+vec_extend(vec_t* self, const vec_t* other) {
+    if (self == other) {
+        return VEC_ERR_INVOP;
+    }
+    if (self == NULL || other == NULL) {
+        return VEC_ERR_NULLPTR;
+    }
+    if (self->magic != VECTOR_MAGIC || other->magic != VECTOR_MAGIC) {
+        return VEC_ERR_INVPTR;
+    }
+    if (self->elem_size != other->elem_size) {
+        return VEC_ERR_INVOP;
+    }
+
+    if (self->capacity - other->len < self->len)  {
+        vec_err_t resize_status = vec_resize(self, self->len + other->len);
+
+        if (resize_status != VEC_ERR_OK) {
+            return resize_status;
+        }
+    }
+
+    memcpy((uint8_t*)self->elems + self->len * self->elem_size,
+            other->elems,
+            other->len * other->elem_size);
+
+    self->len += other->len;
+
+    return VEC_ERR_OK;
+}
 
 
 /* === Read Operations === */
@@ -631,7 +709,7 @@ vec_get(const vec_t* vec, size_t idx, void* dst) {
         return VEC_ERR_IOOB;
     }
 
-    vec_write_var(vec, idx, dst);
+    _vec_write_var(vec, idx, dst);
 
     return VEC_ERR_OK;
 }
@@ -784,7 +862,7 @@ vec_display(const vec_t* vec) {
  * `INVPTR` if the vector pointer validation fails, or `OK` otherwise.
  */
 vec_err_t
-_vec_debug(const vec_t* vec) {
+vec_debug(const vec_t* vec) {
     if (vec == NULL) {
         return VEC_ERR_NULLPTR;
     }

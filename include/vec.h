@@ -84,17 +84,6 @@ extern vec_err_t
 vec_clear(vec_t* vec);
 
 /*
- * Fills the first `len` positions of the vector with `val`.
- * If it hasn't enough capacity it is reallocated to hold `len` elements.
- *
- * [Returns] `NULLPTR` if the `vec` or `val` are NULL,
- * `INVPTR` if the vector pointer validation fails,
- * `NOMEM` if fails to allocate memory or `OK` otherwise.
- */
-extern vec_err_t
-vec_fill(vec_t* vec, const void* val, size_t len);
-
-/*
  * If `dst` is NULL or hasn't enough capacity
  * makes a new vector containing a copy of
  * the elements of `src` in `dst`.
@@ -120,10 +109,7 @@ extern vec_err_t
 vec_destroy(vec_t** vec);
 
 
-
 /* === Write Operations === */
-
-/* == In-Place == */
 
 /*
  * Sets the element at `idx` of `vec` with the value of `src`
@@ -156,9 +142,6 @@ vec_replace(vec_t* vec, size_t idx, const void* val, void* old_val);
 extern vec_err_t
 vec_swap(vec_t* vec, size_t idx1, size_t idx2);
 
-
-/* == Not In-Place == */
-
 /*
  * Inserts `val` at the position `idx`,
  * shifting all elements after it to the right.
@@ -188,7 +171,7 @@ vec_insert(vec_t* vec, size_t idx, const void* val);
  * [Returns] `NULLPTR` if the vector is NULL,
  * `INVPTR` if the vector pointer validation fails,
  * `IOOB` if the index is out of bounds,
- * `NOMEM` if fails to allocate memory or `OK` otherwise.
+ * `NOMEM` if fails to reallocate memory or `OK` otherwise.
  */
 extern vec_err_t
 vec_remove(vec_t *vec, size_t idx, void* removed);
@@ -218,12 +201,49 @@ vec_push(vec_t* vec, const void* val);
  * [Returns] `NULLPTR` if the vector is NULL 
  * `INVPTR` if the vector pointer validation fails,
  * `INVOP` if the vector is empty, `NOMEM` if fails
- * to allocate memory or `OK` otherwise.
+ * to reallocate memory or `OK` otherwise.
  */
 extern vec_err_t
 vec_pop(vec_t* vec, void* popped);
 
+/*
+ * Fills the first `len` positions of the vector with `val`.
+ * If it hasn't enough capacity it is reallocated to hold `len` elements.
+ *
+ * [Returns] `NULLPTR` if the `vec` or `val` are NULL,
+ * `INVPTR` if the vector pointer validation fails,
+ * `NOMEM` if fails to allocate memory or `OK` otherwise.
+ */
+extern vec_err_t
+vec_fill(vec_t* vec, const void* val, size_t len);
 
+/*
+ * Keeps the first `len` elements of `vec` and discards the rest.
+ * If `len` isn't smaller than the current length of `vec` it does nothing.
+ *
+ * If `VEC_DISABLE_SHRINK` isn't defined and
+ * the length of `vec` is less than 1/4 it's capacity
+ * it will reallocate halving it's size.
+ *
+ * [Returns] `NULLPTR` if the `vec` or `val` are NULL,
+ * `INVPTR` if the vector pointer validation fails,
+ * `NOMEM` if fails to allocate memory or `OK` otherwise.
+ */
+extern vec_err_t
+vec_truncate(vec_t* vec, size_t len);
+
+/*
+ * Concatenates the contents of `other` into `self`.
+ * If self hasn't enough capacity it is reallocated.
+ *
+ * [Returns] `NULLPTR` if `self` or `other` are NULL,
+ * `INVPTR` if the vector pointer validation fails,
+ * `INVOP` if extending `self` would surpass the maximum capacity
+ *  `self` equals `other`, or they do not have the same element size,
+ * `NOMEM` if fails to reallocate memory or `OK` otherwise.
+ */
+extern vec_err_t
+vec_extend(vec_t* self, const vec_t* other);
 
 /* === Read Operations === */
 
@@ -309,7 +329,7 @@ vec_display(const vec_t* vec);
  * `INVPTR` if the vector pointer validation fails, or `OK` otherwise.
  */
 extern vec_err_t
-_vec_debug(const vec_t* vec);
+vec_debug(const vec_t* vec);
 
 
 /* === Error Handling === */

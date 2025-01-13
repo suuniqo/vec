@@ -152,11 +152,14 @@ int main(void) {
             case '9':
                 err = vec_fill(vec, &input, 2);
                 break;
+            case '10':
+                err = vec_truncate(vec, &input, 2);
+                break;
             default:
                 break;
         }
 
-        _vec_debug(vec);
+        vec_debug(vec);
         //vec_display(vec);
         printf("out was: %c\n", out);
         size_t len = 0;
@@ -177,16 +180,16 @@ int main(void) {
     vec_push(new, &input);
     vec_push(new, &input);
     vec_push(new, &input);
-    _vec_debug(new);
+    vec_debug(new);
 
     err = vec_clone(vec, &new);
-    _vec_debug(vec);
+    vec_debug(vec);
 
     if (err != VEC_ERR_OK) {
         printf("couldn't clone\n");
     } else {
         printf("clone succesfull\n");
-        _vec_debug(new);
+        vec_debug(new);
         vec_pop(new, &out);
 
         printf("out was: %c\n", out);
