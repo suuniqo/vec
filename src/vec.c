@@ -8,8 +8,6 @@
  * @brief           Implementation of a dynamically resizing vector data structure
  */
 
-// TODO generalize documentation in shrink and stuff
-
 
 /* ========= INCLUDES ========== */
 
@@ -54,12 +52,6 @@ static const char* const VEC_ERR_MSG[] = {
 #define MIN_CAPACITY 16                         /**< Minimum capacity of the vector */
 #define MAX_CAPACITY INT_MAX                    /**< Maximum capacity of the vector */
 #define MAX_DATA_SIZE INT_MAX                   /**< Maximum size in bytes of elements */
-
-#define SHRINK_POLICY 4                         /**< Minimum ratio of capacity / len */
-#define SHRINK_FACTOR 2                         /**< Factor by which the capacity shrinks */
-
-#define GROWTH_POLICY 1                         /**< Maximum ratio of len / capacity */
-#define GROWTH_FACTOR 2                         /**< Factor by which the capacity grows */
 
 #define VEC_MAGIC 0xF3EDB4BE                    /**< Magic value for vector pointer validation */
 
@@ -136,9 +128,12 @@ _vec_free(vec_t** vec) {
 }
 
 /**
- * @brief           Reallocates `vec` if `GROW_POLICY` is fulfilled, doubling it's capacity
+ * @brief           Grows the capacity `vec` if the policy is fulfilled
  *
  * @param[in]       vec: pointer to `vec_t` instance
+ *
+ * @note            The new capacity will be `vec_capacity` * `GROWTH_FACTOR`
+ * @note            It will grow if `vec_len` is greater or equal to `vec_capacity` * `GROWTH_POLICY`
  *
  * @return
  * - `NOMEM`        If fails to allocate memory
@@ -150,7 +145,7 @@ _vec_check_grow(vec_t* vec) {
     if (vec->len < vec->capacity * GROWTH_POLICY) {
         return VEC_ERR_OK;
     }
-    if (vec->capacity > MAX_CAPACITY / GROWTH_FACTOR || vec->capacity * 2 > MAX_CAPACITY) {
+    if (vec->capacity > MAX_CAPACITY / GROWTH_FACTOR || vec->capacity * GROWTH_FACTOR > MAX_CAPACITY) {
         return VEC_ERR_INVOP;
     }
 
@@ -159,9 +154,12 @@ _vec_check_grow(vec_t* vec) {
 }
 
 /**
- * @brief           Reallocates the vector if `SHRINK_POLICY` is fulfilled, halving it's capacity
+ * @brief           Shrinks the vector if the policy is fulfilled
  *
  * @param[in]       vec: pointer to `vec_t` instance
+ *
+ * @note            The new capacity will be `vec_capacity` / `SHRINK_FACTOR`
+ * @note            It will shrink if `vec_len` is less than `vec_capacity` / `SHRINK_POLICY`
  *
  * @return
  * - `NOMEM`        If fails to allocate memory
@@ -543,8 +541,8 @@ vec_swap(vec_t* vec, size_t idx1, size_t idx2) {
  * @param[in]       src: variable where data will be read from
  *
  * @note            It allows inserting at the end of `vec`.
- * @note            If it has no space left it reallocates,
- *                      doubling it's size
+ * @note            If `vec_len` is greater or equal to `vec_capacity` * `GROWTH_POLICY` it reallocates,
+ *                      growing it's capacity to `vec_capacity` * `GROWTH_FACTOR`
  *
  * @return 
  * - `NULLPTR`      If `vec`, it's elements or `src` are `NULL`
@@ -597,8 +595,9 @@ vec_insert(vec_t* vec, size_t idx, const void* src) {
  * @param[out]      removed: If not `NULL`, it will be written with the removed data
  *
  * @note            If `VEC_DISABLE_SHRINK` isn't defined and
- *                      the length of `vec` is less than 1/4 it's
- *                      capacity it will reallocate halving it's size
+ *                      `vec_len` is less than `vec_capacity` / `SHRINK_POLICY`,
+ *                      it's capacity will shrink to `vec_capacity` / `SHRINK_FACTOR`
+ *
  * @return 
  * - `NULLPTR`      If `vec` or it's elements are `NULL`
  * - `INVPTR`       If the vector pointer validation fails
@@ -643,8 +642,8 @@ vec_remove(vec_t* vec, size_t idx, void* removed) {
  * @param[in]       vec: pointer to `vec_t` instance
  * @param[in]       src: variable where data will be read from
  *
- * @note            If it has no space left it reallocates,
- *                      doubling it's size
+ * @note            If `vec_len` is greater or equal to `vec_capacity` * `GROWTH_POLICY` it reallocates,
+ *                      growing it's capacity to `vec_capacity` * `GROWTH_FACTOR`
  *
  * @return 
  * - `NULLPTR`      If `vec`, it's elements or `src` are `NULL`
@@ -666,8 +665,9 @@ vec_push(vec_t* vec, const void* src) {
  * @param[out]      popped: If not `NULL`, it will be written with the removed data
  *
  * @note            If `VEC_DISABLE_SHRINK` isn't defined and
- *                      the length of `vec` is less than 1/4 it's
- *                      capacity it will reallocate halving it's size
+ *                      `vec_len` is less than `vec_capacity` / `SHRINK_POLICY`,
+ *                      it's capacity will shrink to `vec_capacity` / `SHRINK_FACTOR`
+ *
  * @return 
  * - `NULLPTR`      If `vec` or it's elements are `NULL`
  * - `INVPTR`       If the vector pointer validation fails
@@ -753,8 +753,8 @@ vec_fill(vec_t* vec, const void* src, size_t len) {
  *
  * @note            If `len` isn't smaller than the current length of `vec` it does nothing
  * @note            If `VEC_DISABLE_SHRINK` isn't defined and
- *                      the length of `vec` is less than 1/4 it's capacity
- *                      it will reallocate halving it's size
+ *                      `vec_len` is less than `vec_capacity` / `SHRINK_POLICY`,
+ *                      it's capacity will shrink to `vec_capacity` / `SHRINK_FACTOR`
  *
  * @return
  * - `NULLPTR`      If `vec` or it's elements are `NULL`
