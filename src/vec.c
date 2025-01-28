@@ -2,8 +2,18 @@
 #include "../include/vec.h"
 
 
+/** 
+ * @file            vec.c
+ * @author          Andrés Súnico
+ * @brief           Implementation of a dynamically resizing vector data structure
+ */
+
+// TODO generalize documentation in shrink and stuff
+
+
 /* ========= INCLUDES ========== */
 
+#include <assert.h>
 #include <limits.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -13,23 +23,23 @@
 
 /* =========== DATA ============ */
 
-/*
- * Dynamic array of variable length,
- * resizes and shrinks dynamically
- * which can store data of any type 
- * while it's size is constant.
+/**
+ * @brief           Represents a dynamic array of variable length
+ *
+ * @note            Resizes and shrinks dynamically, can store data of any type
+ *                      as long as it has a constant size
  */
 typedef struct vec {
-    uint32_t magic;                             /* Magic number for ptr validation */
-    size_t len;                                 /* Current number of elements */
-    size_t capacity;                            /* Current allocated memory */
-    size_t elem_size;                           /* Size of the data type stored */
-    void* elems;                                /* Memory containing the elements */
+    uint32_t magic;                             /**< Magic number for pointer validation */
+    size_t len;                                 /**< Current number of elements */
+    size_t capacity;                            /**< Current allocated memory */
+    size_t elem_size;                           /**< Size of the data type stored */
+    void* elems;                                /**< Memory containing the elements */
 } vec_t;
 
-/*
- * Mapping between values of 'vec_err_t'
- * and their printable values.
+/**
+ * @brief           Mapping between values of `vec_err_t`
+ *                      and their printable values.
  */
 static const char* const VEC_ERR_MSG[] = {
     "VEC_ERR_OK",
@@ -41,28 +51,61 @@ static const char* const VEC_ERR_MSG[] = {
     "VEC_ERR_NOMEM"
 };
 
-#define MIN_CAPACITY 16                         /* Minimum capacity of the vector */
-#define MAX_CAPACITY INT_MAX                    /* Maximum capacity of the vector */
-#define MAX_DATA_SIZE INT_MAX                   /* Maximum size in bytes of elements */
+#define MIN_CAPACITY 16                         /**< Minimum capacity of the vector */
+#define MAX_CAPACITY INT_MAX                    /**< Maximum capacity of the vector */
+#define MAX_DATA_SIZE INT_MAX                   /**< Maximum size in bytes of elements */
 
-#define SHRINK_POLICY 4                         /* Minimum ratio of capacity / len */
-#define SHRINK_FACTOR 2                         /* Factor by which the capacity shrinks */
+#define SHRINK_POLICY 4                         /**< Minimum ratio of capacity / len */
+#define SHRINK_FACTOR 2                         /**< Factor by which the capacity shrinks */
 
-#define GROWTH_POLICY 1                         /* Maximum ratio of len / capacity */
-#define GROWTH_FACTOR 2                         /* Factor by which the capacity grows */
+#define GROWTH_POLICY 1                         /**< Maximum ratio of len / capacity */
+#define GROWTH_FACTOR 2                         /**< Factor by which the capacity grows */
 
-#define VECTOR_MAGIC 0xF3EDB4BE                 /* Magic value for vec pointer validation */
+#define VEC_MAGIC 0xF3EDB4BE                    /**< Magic value for vector pointer validation */
 
 
 
 /* ========== PRIVATE ========== */
 
+/* === Validation === */
+
+/**
+ * @brief           Verifies that `vec` is a correct instance
+ *
+ * @param[in]       vec: pointer to `vec_t` instance
+ *
+ * @return
+ * - `NULLPTR`      If `vec` or its elements are `NULL`
+ * - `INVPTR`       If the vector pointer validation fails
+ * - `OK`           On success 
+ */
+static vec_err_t
+_vec_validate_ptr(const vec_t* vec) {
+    if (vec == NULL) {
+        return VEC_ERR_NULLPTR;
+    }
+    if (vec->magic != VEC_MAGIC) {
+        return VEC_ERR_INVPTR;
+    }
+    if (vec->elems == NULL) {
+        return VEC_ERR_NULLPTR;
+    }
+
+    return VEC_ERR_OK;
+}
+
+
 /* === Reallocation === */
 
-/*
- * Reallocates the vector with `capacity` memory.
+/**
+ * @brief           Reallocates `vec` with `capacity` memory
  *
- * [Returns] `NOMEM` if fails to allocate memory `OK` otherwise.
+ * @param[in]       vec: pointer to `vec_t` instance
+ * @param[in]       capacity: memory to reallocate
+ *
+ * @return
+ * - `NOMEM`        If memory reallocation fails
+ * - `OK`           On success 
  */
 static vec_err_t
 _vec_reallocate(vec_t* vec, size_t capacity) {
@@ -79,8 +122,10 @@ _vec_reallocate(vec_t* vec, size_t capacity) {
     return VEC_ERR_OK;
 }
 
-/*
- * Destroys the instance of vec_t.
+/**
+ * @brief           Destroys the instance of `vec_t`
+ *
+ * @param[in]       vec: double pointer to `vec_t` instance
  */
 static void
 _vec_free(vec_t** vec) {
@@ -90,11 +135,15 @@ _vec_free(vec_t** vec) {
     *vec = NULL;
 }
 
-/*
- * Reallocates the vector if `GROW_POLICY` is fulfilled, doubling it's capacity.
+/**
+ * @brief           Reallocates `vec` if `GROW_POLICY` is fulfilled, doubling it's capacity
  *
- * [Returns] `NOMEM` if fails to allocate memory,
- * `INVOP` if growing would surpass maximum space or `OK` otherwise.
+ * @param[in]       vec: pointer to `vec_t` instance
+ *
+ * @return
+ * - `NOMEM`        If fails to allocate memory
+ * - `INVOP`        If growing would surpass maximum space
+ * - `OK`           On success
  */
 static vec_err_t
 _vec_check_grow(vec_t* vec) {
@@ -109,10 +158,14 @@ _vec_check_grow(vec_t* vec) {
     return _vec_reallocate(vec, MIN_CAPACITY > new_capacity ? MIN_CAPACITY : new_capacity);
 }
 
-/*
- * Reallocates the vector if `SHRINK_POLICY` is fulfilled, halving it's capacity.
+/**
+ * @brief           Reallocates the vector if `SHRINK_POLICY` is fulfilled, halving it's capacity
  *
- * [Returns] `NOMEM` if fails to allocate memory `OK` otherwise.
+ * @param[in]       vec: pointer to `vec_t` instance
+ *
+ * @return
+ * - `NOMEM`        If fails to allocate memory
+ * - `OK`           On success
  */
 static vec_err_t
 _vec_check_shrink(vec_t* vec) {
@@ -127,16 +180,24 @@ _vec_check_shrink(vec_t* vec) {
 
 /* === Writing === */
 
-/*
- * Writes into `vec` at `idx` the contents of `src`.
+/**
+ * @brief           Writes into `vec` at `idx` the contents of `src`
+ *
+ * @param[in]       vec: pointer to `vec_t` instance
+ * @param[in]       idx: position of `vec` where data will be written into
+ * @param[in]       src: variable where data will be read from
  */
 static void
 _vec_write_idx(vec_t* vec, size_t idx, const void* src) {
     memcpy((uint8_t*) vec->elems + idx * vec->elem_size, src, vec->elem_size);
 }
 
-/*
- * Writes into `dst` the contents of `vec` at `idx`.
+/**
+ * @brief           Writes into `dst` the contents of `vec` at `idx`.
+ *
+ * @param[in]       vec: pointer to `vec_t` instance
+ * @param[in]       idx: position of `vec` where data will be read from
+ * @param[out]      dst: variable where data will be written into
  */
 static void
 _vec_write_var(const vec_t* vec, size_t idx, void* dst) {
@@ -148,13 +209,22 @@ _vec_write_var(const vec_t* vec, size_t idx, void* dst) {
 
 /* === Memory Management === */
 
-/*
- * Creates a new instance of vec_t, allocating memory for 
- * `capacity` (or default value if negative) elements of size `elem_size`
+/**
+ * @brief           Creates a new instance of vec_t, allocating memory for `capacity`
+ *                      (or default value if negative) elements of size `elem_size`
  *
- * [Returns] `INVOP` if element size is smaller than one byte
- * or is bigger than `MAX_DATA_SIZE`, `NULLPTR` if `vec` is NULL,
- * NOMEM` if fails to allocate memory `OK` otherwise.
+ * @param[out]      vec: double pointer to unintialized `vec_t` instance (so it must point to `NULL`)
+ * @param[in]       elem_size: the size, in bytes, of the data type to be stored
+ * @param[in]       capacity: the initial capacity of the vector
+ *
+ * @note            If `capacity` is smaller than  `MIN_CAPACITY`, then it will be clamped
+ * @note            It's required that `vec` points to `NULL`
+ *
+ * @return
+ * - `INVOP`        If `elem_size` is `0` or `elem_size` <= `MAX_DATA_SIZE`, or if `vec` doesn't point to `NULL`
+ * - `NULLPTR`      If `vec` is `NULL`
+ * - `NOMEM`        If fails to allocate memory 
+ * - `OK`           On success
  */
 vec_err_t
 vec_make(vec_t** vec, size_t elem_size, size_t capacity) {
@@ -162,6 +232,9 @@ vec_make(vec_t** vec, size_t elem_size, size_t capacity) {
         return VEC_ERR_NULLPTR;
     }
     if (elem_size < 1 || elem_size > MAX_DATA_SIZE) {
+        return VEC_ERR_INVOP;
+    }
+    if (*vec != NULL) {
         return VEC_ERR_INVOP;
     }
     if (capacity < MIN_CAPACITY) {
@@ -174,7 +247,7 @@ vec_make(vec_t** vec, size_t elem_size, size_t capacity) {
     }
 
     **vec = (vec_t) {
-        .magic = VECTOR_MAGIC,
+        .magic = VEC_MAGIC,
         .len = 0,
         .capacity = capacity,
         .elem_size = elem_size,
@@ -186,26 +259,29 @@ vec_make(vec_t** vec, size_t elem_size, size_t capacity) {
         *vec = NULL;
         return VEC_ERR_NOMEM;
     }
-
+    
     return VEC_ERR_OK;
 }
 
-/*
- * Resizes the vector with `capacity` memory
+/**
+ * @brief           Resizes the vector with `capacity` memory
  *
- * [Returns] `NOMEM` if fails to allocate memory,
- * `NULLPTR` if the vector is NULL, 
- * `INVPTR` if the vector pointer validation fails,
- * `INVOP` if capacity isn't in the valid range or
- * `OK` otherwise.
+ * @param[in]       vec: pointer to `vec_t` instance
+ * @param[in]       capacity: new capacity of `vec` 
+ *
+ * @return
+ * - `NULLPTR`      If `vec` or its elements are `NULL`
+ * - `INVPTR`       If the vector pointer validation fails
+ * - `NOMEM`        If memory reallocation fails
+ * - `INVOP`        If capacity isn't in the valid range or
+ * - `OK`           On success
  */
 vec_err_t
 vec_resize(vec_t* vec, size_t capacity) {
-    if (vec == NULL) {
-        return VEC_ERR_NULLPTR;
-    }
-    if (vec->magic != VECTOR_MAGIC) {
-        return VEC_ERR_INVPTR;
+    vec_err_t vec_status = _vec_validate_ptr(vec);
+
+    if (vec_status != VEC_ERR_OK) {
+        return vec_status;
     }
     if (capacity <= MIN_CAPACITY || capacity > MAX_CAPACITY) {
         return VEC_ERR_INVOP;
@@ -214,21 +290,25 @@ vec_resize(vec_t* vec, size_t capacity) {
     return _vec_reallocate(vec, capacity);
 }
 
-/*
- * Reallocates the vector, reserving the exact amount of
- * memory needed to hold it's current contents
+/**
+ * @brief           Reallocates the vector, reserving the exact amount of
+ *                      memory needed to hold it's current contents
  *
- * [Returns] `NULLPTR` if the vector is NULL, `INVOP` if it's empty,
- * `INVPTR` if the vector pointer validation fails,
- * `NOMEM` if fails to allocate memory or `OK` otherwise.
+ * @param[in]       vec: pointer to `vec_t` instance
+ *
+ * @return
+ * - `NULLPTR`      If `vec` or its elements are `NULL`
+ * - `INVPTR`       If the vector pointer validation fails
+ * - `INVOP`        If `vec` is empty
+ * - `NOMEM`        If memory reallocation fails
+ * - `OK`           On success
  */
 vec_err_t
 vec_shrink_to_fit(vec_t* vec) {
-    if (vec == NULL) {
-        return VEC_ERR_NULLPTR;
-    }
-    if (vec->magic != VECTOR_MAGIC) {
-        return VEC_ERR_INVPTR;
+    vec_err_t vec_status = _vec_validate_ptr(vec);
+
+    if (vec_status != VEC_ERR_OK) {
+        return vec_status;
     }
     if (vec->len == 0) {
         return VEC_ERR_INVOP;
@@ -240,21 +320,24 @@ vec_shrink_to_fit(vec_t* vec) {
     return _vec_reallocate(vec, vec->len);
 }
 
-/*
- * Resets the vector, reallocating
- * and deleting it's contents if enough memory.
+/**
+ * @brief           Resets the vector, reallocating
+ *                      and deleting it's contents if enough memory
  *
- * [Returns] `NULLPTR` if the vector is NULL,
- * `INVPTR` if the vector pointer validation fails,
- * `NOMEM` if fails to allocate memory `OK` otherwise.
+ * @param[in]       vec: pointer to `vec_t` instance
+ *
+ * @return
+ * - `NULLPTR`      If `vec` or its elements are `NULL`
+ * - `INVPTR`       If the vector pointer validation fails
+ * - `NOMEM`        If memory reallocation fails
+ * - `OK`           On success
  */
 vec_err_t
 vec_clear(vec_t* vec) {
-    if (vec == NULL) {
-        return VEC_ERR_NULLPTR;
-    }
-    if (vec->magic != VECTOR_MAGIC) {
-        return VEC_ERR_INVPTR;
+    vec_err_t vec_status = _vec_validate_ptr(vec);
+
+    if (vec_status != VEC_ERR_OK) {
+        return vec_status;
     }
     if (vec->capacity <= MIN_CAPACITY) {
         vec->len = 0;
@@ -276,30 +359,43 @@ vec_clear(vec_t* vec) {
     return VEC_ERR_OK;
 }
 
-/*
- * If `dst` is NULL or hasn't enough capacity
- * makes a new vector containing a copy of
- * the elements of `src` in `dst`.
- * Else the elements of `src` are copied into `dst`.
- * Note that if `dst` is reallocated, it's
- * capacity will be the length of `src`.
+/**
+ * @brief           If `dst` is NULL or hasn't enough capacity
+ *                      makes a new vector containing a copy of
+ *                      the elements of `src` in `dst`,
+ *                      else the elements of `src` are copied into `dst`
  *
- * [Returns] `NULLPTR` if the `src` or `dst` are NULL,
- * `INVPTR` if the vector pointer validation fails,
- * `INVOP` if their element size do not match or dst points to src,
- * `NOMEM` if fails to allocate memory or `OK` otherwise.
+ * @param[in]       src: pointer to `vec_t` instance, where data will be read from
+ * @param[out]      dst: double pointer to `vec_t` instance, where data will be written into
+ *
+ * @note            If `dst` is reallocated, it's
+ *                      capacity will be the length of `src`
+ *
+ * @return
+ * - `NULLPTR`      If `src` or `dst` are NULL, or if their elements are `NULL`
+ * - `INVPTR`       If the vector pointer validation fails
+ * - `INVOP`        If their element size do not match or `dst` points to `src`
+ * - `NOMEM`        If memory reallocation fails
+ * - `OK`           On success
  */
 vec_err_t
 vec_clone(const vec_t* src, vec_t** dst) {
-    if (dst == NULL || src == NULL) {
+    vec_err_t vec_status;
+
+    vec_status = _vec_validate_ptr(src);
+
+    if (vec_status != VEC_ERR_OK) {
+        return vec_status;
+    }
+    if (dst == NULL) {
         return VEC_ERR_NULLPTR;
     }
-    if (src->magic != VECTOR_MAGIC) {
-        return VEC_ERR_INVPTR;
-    }
+
     if (*dst != NULL) {
-        if ((*dst)->magic != VECTOR_MAGIC) {
-            return VEC_ERR_INVPTR;
+        vec_status = _vec_validate_ptr(*dst);
+
+        if (vec_status != VEC_ERR_OK) {
+            return vec_status;
         }
         if ((*dst)->elem_size != src->elem_size || *dst == src) {
             return VEC_ERR_INVOP;
@@ -308,10 +404,11 @@ vec_clone(const vec_t* src, vec_t** dst) {
 
     if (*dst == NULL || (*dst)->capacity < src->len) {
         vec_t *clone = NULL;
-        vec_err_t make_status = vec_make(&clone, src->elem_size, src->len);
 
-        if (make_status != VEC_ERR_OK) {
-            return make_status;
+        vec_status = vec_make(&clone, src->elem_size, src->len);
+
+        if (vec_status != VEC_ERR_OK) {
+            return vec_status;
         }
 
         if (*dst != NULL) {
@@ -327,19 +424,26 @@ vec_clone(const vec_t* src, vec_t** dst) {
     return VEC_ERR_OK;
 }
 
-/*
- * Destroys the instance of vec_t.
+/**
+ * @brief           Destroys the instance of `vec_t`
  *
- * [Returns] `NULLPTR` if the pointer or what it points to is NULL,
- * `INVPTR` if the vector pointer validation fails, or `OK` otherwise.
+ * @param[in]       vec: double pointer to `vec_t` instance
+ *
+ * @return
+ * - `NULLPTR`      If `vec`, what it points to, or it's elements are `NULL`
+ * - `INVPTR`       If the vector pointer validation fails
+ * - `OK`           On success
  */
 vec_err_t
 vec_destroy(vec_t** vec) {
-    if (vec == NULL || *vec == NULL) {
+    if (vec == NULL) {
         return VEC_ERR_NULLPTR;
     }
-    if ((*vec)->magic != VECTOR_MAGIC) {
-        return VEC_ERR_INVPTR;
+
+    vec_err_t vec_status = _vec_validate_ptr(*vec);
+
+    if (vec_status != VEC_ERR_OK) {
+        return vec_status;
     }
 
     _vec_free(vec);
@@ -350,70 +454,67 @@ vec_destroy(vec_t** vec) {
 
 /* === Write Operations === */
 
-/*
- * Sets the element at `idx` of `vec` with the value of `src`.
+/**
+ * @brief           Sets the element at `idx` of `vec` with the value of `src`,
+ *                      if old isn't `NULL`, the old value will be written into it
  *
- * [Returns] `NULLPTR` if any of the parameters are NULL,
- * `INVPTR` if the vector pointer validation fails,
- * `IOOB` if any index is out of bounds or `OK` otherwise.
+ * @param[in]       vec: pointer to `vec_t` instance
+ * @param[in]       idx: position of `vec` where data will be written into
+ * @param[in]       src: variable where data will be read from
+ * @param[out]      old: variable where the old data will be written into
+ *
+ * @return
+ * - `NULLPTR`      If `vec`, it's elements or `src` are `NULL`
+ * - `INVPTR`       If the vector pointer validation fails
+ * - `IOOB`         If `idx` greater or equal to the vector's length
+ * - `OK`           On success
  */
 vec_err_t
-vec_set(vec_t* vec, size_t idx, const void* src) {
-    if (vec == NULL || src == NULL) {
-        return VEC_ERR_NULLPTR;
+vec_set(vec_t* vec, size_t idx, const void* src, void* old) {
+    vec_err_t vec_status = _vec_validate_ptr(vec);
+
+    if (vec_status != VEC_ERR_OK) {
+        return vec_status;
     }
-    if (vec->magic != VECTOR_MAGIC) {
-        return VEC_ERR_INVPTR;
+    if (src == NULL) {
+        return VEC_ERR_NULLPTR;
     }
     if (idx >= vec->len) {
         return VEC_ERR_IOOB;
     }
 
+    if (old != NULL) {
+        _vec_write_var(vec, idx, old);
+    }
     _vec_write_idx(vec, idx, src);
 
     return VEC_ERR_OK;
 }
 
-/*
- * Substitutes with `val` the element of `vec` at `idx`.
+/**
+ * @brief           Swaps the elements of `vec` at `idx1` at and `idx2`
  *
- * [Returns] `NULLPTR` if the vector is NULL,
- * `INVPTR` if the vector pointer validation fails,
- * `IOOB` if the index is out of bounds or `OK` otherwise.
- */
-vec_err_t
-vec_replace(vec_t* vec, size_t idx, const void* val, void* old_val) {
-    if (vec == NULL || val == NULL || old_val == NULL) {
-        return VEC_ERR_NULLPTR;
-    }
-    if (vec->magic != VECTOR_MAGIC) {
-        return VEC_ERR_INVPTR;
-    }
-    if (idx >= vec->len) {
-        return VEC_ERR_IOOB;
-    }
-
-    _vec_write_var(vec, idx, old_val);
-    _vec_write_idx(vec, idx, val);
-
-    return VEC_ERR_OK;
-}
-
-/*
- * Swaps the elements of `vec` at `idx1` at and `idx2`.
+ * @param[in]       vec: pointer to `vec_t` instance
+ * @param[in]       idx1: first position of `vec` where data will swapped
+ * @param[in]       idx2: second position of `vec` where data will be swapped
  *
- * [Returns] `NULLPTR` if the vector is NULL,
- * `INVPTR` if the vector pointer validation fails,
- * `NOMEM` if there isn't enough space for a temp variable,
- * `IOOB` if any index is out of bounds or `OK` otherwise.
+ * @return
+ * - `NULLPTR`      If `vec` or it's elements are `NULL`
+ * - `INVPTR`       If the vector pointer validation fails
+ * - `INVOP`        If `idx1` equals `idx2`
+ * - `IOOB`         If `idx1` or `idx2` are greater or equal to the vector's length
+ * - `NOMEM`        If fails to allocate memory for an auxiliary variable
+ * - `OK`           On success
  */
 vec_err_t
 vec_swap(vec_t* vec, size_t idx1, size_t idx2) {
-    if (vec == NULL) {
-        return VEC_ERR_NULLPTR;
+    vec_err_t vec_status = _vec_validate_ptr(vec);
+
+    if (vec_status != VEC_ERR_OK) {
+        return vec_status;
     }
-    if (vec->magic != VECTOR_MAGIC) {
-        return VEC_ERR_INVPTR;
+    if (idx1 == idx2) {
+        return VEC_ERR_INVOP;
     }
     if (idx1 >= vec->len || idx2 >= vec->len) {
         return VEC_ERR_IOOB;
@@ -433,35 +534,47 @@ vec_swap(vec_t* vec, size_t idx1, size_t idx2) {
     return VEC_ERR_OK;
 }
 
-/*
- * Inserts `val` at the position `idx`,
- * shifting all elements after it to the right.
- * It allows inserting at the end of `vec`.
+/**
+ * @brief           Inserts `src` at the position `idx`,
+ *                      shifting all elements after it to the right.
  *
- * If it has no space left it reallocates,
- * doubling it's size
+ * @param[in]       vec: pointer to `vec_t` instance
+ * @param[in]       idx: position of `vec` where data will be written into
+ * @param[in]       src: variable where data will be read from
  *
- * [Returns] `NULLPTR` if `vec` or `val` is NULL,
- * `INVPTR` if the vector pointer validation fails,
- * `IOOB` if the index is out of bounds,
- * `INVOP` if it has reached maximum capacity,
- * `NOMEM` if fails to allocate memory or `OK` otherwise.
+ * @note            It allows inserting at the end of `vec`.
+ * @note            If it has no space left it reallocates,
+ *                      doubling it's size
+ *
+ * @return 
+ * - `NULLPTR`      If `vec`, it's elements or `src` are `NULL`
+ * - `INVPTR`       If the vector pointer validation fails
+ * - `IOOB`         If `idx` greater than the vector's length
+ * - `INVOP`        If it has reached maximum capacity
+ * - `NOMEM`        If memory reallocation fails
+ * - `OK`           On success
  */
 vec_err_t
-vec_insert(vec_t* vec, size_t idx, const void* val) {
-    if (vec == NULL || val == NULL) {
-        return VEC_ERR_NULLPTR;
+vec_insert(vec_t* vec, size_t idx, const void* src) {
+    vec_err_t vec_status;
+
+    vec_status = _vec_validate_ptr(vec);
+
+    if (vec_status != VEC_ERR_OK) {
+        return vec_status;
     }
-    if (vec->magic != VECTOR_MAGIC) {
-        return VEC_ERR_INVPTR;
+
+    if (src == NULL) {
+        return VEC_ERR_NULLPTR;
     }
     if (idx > vec->len) {
         return VEC_ERR_IOOB;
     }
 
-    vec_err_t resize_status = _vec_check_grow(vec);
-    if (resize_status != VEC_ERR_OK) {
-        return resize_status;
+    vec_status = _vec_check_grow(vec);
+
+    if (vec_status != VEC_ERR_OK) {
+        return vec_status;
     }
 
     memmove((uint8_t*) vec->elems + (idx + 1) * vec->elem_size,
@@ -469,32 +582,36 @@ vec_insert(vec_t* vec, size_t idx, const void* val) {
             (vec->len - idx) * vec->elem_size);
 
     ++vec->len;
-    _vec_write_idx(vec, idx, val);
+    _vec_write_idx(vec, idx, src);
 
     return VEC_ERR_OK;
 }
 
-/*
- * Removes the value at the position `idx`,
- * shifting all elements after it to the left.
- * Optionally sets `removed` to the removed value.
+/**
+ * @brief           Removes the value at the position `idx`,
+ *                      shifting all elements after it to the left and
+ *                      optionally writes `removed` with the removed value
  *
- * If `VEC_DISABLE_SHRINK` isn't defined and
- * the length of `vec` is less than 1/4 it's capacity
- * it will reallocate halving it's size.
+ * @param[in]       vec: pointer to `vec_t` instance
+ * @param[in]       idx: position of `vec` that will be removed
+ * @param[out]      removed: If not `NULL`, it will be written with the removed data
  *
- * [Returns] `NULLPTR` if the vector is NULL
- * `INVPTR` if the vector pointer validation fails,
- * `IOOB` if the index is out of bounds,
- * `NOMEM` if fails to reallocate memory or `OK` otherwise.
+ * @note            If `VEC_DISABLE_SHRINK` isn't defined and
+ *                      the length of `vec` is less than 1/4 it's
+ *                      capacity it will reallocate halving it's size
+ * @return 
+ * - `NULLPTR`      If `vec` or it's elements are `NULL`
+ * - `INVPTR`       If the vector pointer validation fails
+ * - `IOOB`         If `idx` greater or equal to the vector's length
+ * - `NOMEM`        If memory reallocation fails
+ * - `OK`           On success
  */
 vec_err_t
 vec_remove(vec_t* vec, size_t idx, void* removed) {
-    if (vec == NULL) {
-        return VEC_ERR_NULLPTR;
-    }
-    if (vec->magic != VECTOR_MAGIC) {
-        return VEC_ERR_INVPTR;
+    vec_err_t vec_status = _vec_validate_ptr(vec);
+
+    if (vec_status != VEC_ERR_OK) {
+        return vec_status;
     }
     if (idx >= vec->len) {
         return VEC_ERR_IOOB;
@@ -520,34 +637,43 @@ vec_remove(vec_t* vec, size_t idx, void* removed) {
     return VEC_ERR_OK;
 }
 
-/*
- * Inserts `val` at the end of `vec`.
+/**
+ * @brief           Inserts `src` at the end of `vec`
  *
- * If it has no space left it reallocates,
- * doubling it's size
+ * @param[in]       vec: pointer to `vec_t` instance
+ * @param[in]       src: variable where data will be read from
  *
- * [Returns] `NULLPTR` if the vector is NULL,
- * `INVPTR` if the vector pointer validation fails,
- * `INVOP` if it has reached maximum capacity,
- * `NOMEM` if fails to allocate memory or `OK` otherwise.
+ * @note            If it has no space left it reallocates,
+ *                      doubling it's size
+ *
+ * @return 
+ * - `NULLPTR`      If `vec`, it's elements or `src` are `NULL`
+ * - `INVPTR`       If the vector pointer validation fails
+ * - `INVOP`        If it has reached maximum capacity
+ * - `NOMEM`        If memory reallocation fails
+ * - `OK`           On success
  */
 vec_err_t
-vec_push(vec_t* vec, const void* val) {
-    return vec_insert(vec, vec->len, val);
+vec_push(vec_t* vec, const void* src) {
+    return vec_insert(vec, vec->len, src);
 }
 
-/*
- * Removes the last element of `vec` and
- * optionally sets `popped` to the removed value.
+/**
+ * @brief           Removes the last element of `vec` and
+ *                      optionally sets `popped` to the removed value
  *
- * If `VEC_DISABLE_SHRINK` isn't defined and
- * the length of `vec` is less than 1/4 it's capacity
- * it will reallocate halving it's size.
+ * @param[in]       vec: pointer to `vec_t` instance
+ * @param[out]      popped: If not `NULL`, it will be written with the removed data
  *
- * [Returns] `NULLPTR` if the vector is NULL 
- * `INVPTR` if the vector pointer validation fails,
- * `INVOP` if the vector is empty, `NOMEM` if fails
- * to reallocate memory or `OK` otherwise.
+ * @note            If `VEC_DISABLE_SHRINK` isn't defined and
+ *                      the length of `vec` is less than 1/4 it's
+ *                      capacity it will reallocate halving it's size
+ * @return 
+ * - `NULLPTR`      If `vec` or it's elements are `NULL`
+ * - `INVPTR`       If the vector pointer validation fails
+ * - `INVOP`        If `vec` is empty
+ * - `NOMEM`        If memory reallocation fails
+ * - `OK`           On success
  */
 vec_err_t
 vec_pop(vec_t* vec, void* popped) {
@@ -561,31 +687,40 @@ vec_pop(vec_t* vec, void* popped) {
     return vec_remove(vec, vec->len - 1, popped);
 }
 
-/*
- * Fills the first `len` positions of the vector with `val`.
- * If it hasn't enough capacity it is reallocated to hold `len` elements.
+/**
+ * @brief           Fills the first `len` positions of the vector with `src`
  *
- * [Returns] `NULLPTR` if the `vec` or `val` are NULL,
- * `INVOP` if `len` isn't in the valid range,
- * `INVPTR` if the vector pointer validation fails,
- * `NOMEM` if fails to allocate memory or `OK` otherwise.
+ * @param[in]       vec: pointer to `vec_t` instance
+ * @param[in]       src: variable where data will be read from
+ * @param[in]       len: number of elements with which `vec` will be filled
+ *
+ * @note            If it hasn't enough capacity it is reallocated to hold `len` elements
+ *
+ * @return
+ * - `NULLPTR`      If `vec`, it's elements or `src` are `NULL`
+ * - `INVPTR`       If the vector pointer validation fails
+ * - `INVOP`        If `len` is `0` or greater than `MAX_CAPACITY`
+ * - `NOMEM`        If memory reallocation fails
+ * - `OK`           On success
  */
 vec_err_t
-vec_fill(vec_t* vec, const void* val, size_t len) {
-    if (vec == NULL || val == NULL) {
-        return VEC_ERR_NULLPTR;
+vec_fill(vec_t* vec, const void* src, size_t len) {
+    vec_err_t vec_status = _vec_validate_ptr(vec);
+
+    if (vec_status != VEC_ERR_OK) {
+        return vec_status;
     }
-    if (vec->magic != VECTOR_MAGIC) {
-        return VEC_ERR_INVPTR;
+    if (src == NULL) {
+        return VEC_ERR_NULLPTR;
     }
     if (len == 0) {
         return VEC_ERR_OK;
     }
     if (vec->capacity < len) {
-        vec_err_t resize_status = vec_resize(vec, len);
+        vec_status = vec_resize(vec, len);
 
-        if (resize_status != VEC_ERR_OK) {
-            return resize_status;
+        if (vec_status != VEC_ERR_OK) {
+            return vec_status;
         }
     }
     if (vec->len < len) {
@@ -593,7 +728,7 @@ vec_fill(vec_t* vec, const void* val, size_t len) {
     }
 
     memcpy((uint8_t*) vec->elems,
-            val,
+            src,
             vec->elem_size);
 
     size_t offset;
@@ -610,25 +745,29 @@ vec_fill(vec_t* vec, const void* val, size_t len) {
     return VEC_ERR_OK;
 }
 
-/*
- * Keeps the first `len` elements of `vec` and discards the rest.
- * If `len` isn't smaller than the current length of `vec` it does nothing.
+/**
+ * @brief           Keeps the first `len` elements of `vec` and discards the rest
  *
- * If `VEC_DISABLE_SHRINK` isn't defined and
- * the length of `vec` is less than 1/4 it's capacity
- * it will reallocate halving it's size.
+ * @param[in]       vec: pointer to `vec_t` instance
+ * @param[in]       len: number of elements which will be preserved in `vec`
  *
- * [Returns] `NULLPTR` if `vec` is NULL,
- * `INVPTR` if the vector pointer validation fails,
- * `NOMEM` if fails to allocate memory or `OK` otherwise.
+ * @note            If `len` isn't smaller than the current length of `vec` it does nothing
+ * @note            If `VEC_DISABLE_SHRINK` isn't defined and
+ *                      the length of `vec` is less than 1/4 it's capacity
+ *                      it will reallocate halving it's size
+ *
+ * @return
+ * - `NULLPTR`      If `vec` or it's elements are `NULL`
+ * - `INVPTR`       If the vector pointer validation fails
+ * - `NOMEM`        If memory reallocation fails
+ * - `OK`           On success
  */
 vec_err_t
 vec_truncate(vec_t* vec, size_t len) {
-    if (vec == NULL) {
-        return VEC_ERR_NULLPTR;
-    }
-    if (vec->magic != VECTOR_MAGIC) {
-        return VEC_ERR_INVPTR;
+    vec_err_t vec_status = _vec_validate_ptr(vec);
+
+    if (vec_status != VEC_ERR_OK) {
+        return vec_status;
     }
     if (len >= vec->len) {
         return VEC_ERR_OK;
@@ -645,44 +784,59 @@ vec_truncate(vec_t* vec, size_t len) {
     return VEC_ERR_OK;
 }
 
-/*
- * Concatenates the contents of `other` into `self`.
- * If self hasn't enough capacity it is reallocated.
+/**
+ * @brief           Concatenates the contents of `other` into `self`
  *
- * [Returns] `NULLPTR` if `self` or `other` are NULL,
- * `INVPTR` if the vector pointer validation fails,
- * `INVOP` if extending `self` would surpass the maximum capacity
- *  `self` equals `other`, or they do not have the same element size,
- * `NOMEM` if fails to reallocate memory or `OK` otherwise.
+ * @param[in]       dst: pointer to `vec_t` instance, where data will be written into
+ * @param[in]       src: pointer to `vec_t` instance, where data will be read from
+ *
+ * @note            If self hasn't enough capacity it is reallocated
+ *
+ * @return 
+ * - `NULLPTR`      If `self`, `other` or their elements are `NULL`
+ * - `INVPTR`       If the vector pointer validation fails
+ * - `INVOP`        If extending `self` would surpass `MAX_CAPACITY`,
+ *                      if `self` equals `other`, or if they do not have the same element size
+ * - `NOMEM`        If memory reallocation fails
+ * - `OK`           On success
  */
 vec_err_t
-vec_extend(vec_t* self, const vec_t* other) {
-    if (self == other) {
-        return VEC_ERR_INVOP;
-    }
-    if (self == NULL || other == NULL) {
-        return VEC_ERR_NULLPTR;
-    }
-    if (self->magic != VECTOR_MAGIC || other->magic != VECTOR_MAGIC) {
-        return VEC_ERR_INVPTR;
-    }
-    if (self->elem_size != other->elem_size) {
+vec_extend(vec_t* dst, const vec_t* src) {
+    vec_err_t vec_status;
+
+    if (dst == src) {
         return VEC_ERR_INVOP;
     }
 
-    if (self->capacity - other->len < self->len)  {
-        vec_err_t resize_status = vec_resize(self, self->len + other->len);
+    vec_status = _vec_validate_ptr(dst);
 
-        if (resize_status != VEC_ERR_OK) {
-            return resize_status;
+    if (vec_status != VEC_ERR_OK) {
+        return vec_status;
+    }
+
+    vec_status = _vec_validate_ptr(src);
+
+    if (vec_status != VEC_ERR_OK) {
+        return vec_status;
+    }
+
+    if (dst->elem_size != src->elem_size) {
+        return VEC_ERR_INVOP;
+    }
+
+    if (dst->capacity - src->len < dst->len)  {
+        vec_status = vec_resize(dst, dst->len + src->len);
+
+        if (vec_status != VEC_ERR_OK) {
+            return vec_status;
         }
     }
 
-    memcpy((uint8_t*)self->elems + self->len * self->elem_size,
-            other->elems,
-            other->len * other->elem_size);
+    memcpy((uint8_t*)dst->elems + dst->len * dst->elem_size,
+            src->elems,
+            src->len * src->elem_size);
 
-    self->len += other->len;
+    dst->len += src->len;
 
     return VEC_ERR_OK;
 }
@@ -690,20 +844,27 @@ vec_extend(vec_t* self, const vec_t* other) {
 
 /* === Read Operations === */
 
-/*
- * Sets the parameter `dst` with the value of `vec` at `idx`.
+/**
+ * @brief           Sets the parameter `dst` with the value of `vec` at `idx`
  *
- * [Returns] `NULLPTR` if any of the parameters are NULL,
- * `INVPTR` if the vector pointer validation fails,
- * `IOOB` if any index is out of bounds or `OK` otherwise.
+ * @param[in]       vec: pointer to `vec_t` instance
+ * @param[out]      dst: variable where data will be written into
+ *
+ * @return
+ * - `NULLPTR`      If `vec`, it's elements or `dst` are `NULL`
+ * - `INVPTR`       If the vector pointer validation fails
+ * - `IOOB`         If `idx` greater or equal to the vector's length
+ * - `OK`           On success
  */
 vec_err_t
 vec_get(const vec_t* vec, size_t idx, void* dst) {
-    if (vec == NULL || dst == NULL) {
-        return VEC_ERR_NULLPTR;
+    vec_err_t vec_status = _vec_validate_ptr(vec);
+
+    if (vec_status != VEC_ERR_OK) {
+        return vec_status;
     }
-    if (vec->magic != VECTOR_MAGIC) {
-        return VEC_ERR_INVPTR;
+    if (dst == NULL) {
+        return VEC_ERR_NULLPTR;
     }
     if (idx >= vec->len) {
         return VEC_ERR_IOOB;
@@ -714,43 +875,60 @@ vec_get(const vec_t* vec, size_t idx, void* dst) {
     return VEC_ERR_OK;
 }
 
-/*
- * Sets `first` to the first element of `vec`.
+/**
+ * @brief           Sets `first` to the first element of `vec`
  *
- * [Returns] `NULLPTR` if `vec` or `last` are NULL,
- * `INVPTR` if the vector pointer validation fails,
- * `IOOB` if empty or `OK` otherwise
+ * @param[in]       vec: pointer to `vec_t` instance
+ * @param[out]      first: variable where data will be written into
+ *
+ * @return
+ * - `NULLPTR`      If `vec`, it's elements or `first` are `NULL`
+ * - `INVPTR`       If the vector pointer validation fails
+ * - `IOOB`         If `vec` is empty
+ * - `OK`           On success
  */
 vec_err_t
 vec_first(const vec_t* vec, void* first) {
     return vec_get(vec, 0, first);
 }
 
-/*
- * Sets `last` to the last element of `vec`.
+/**
+ * @brief           Sets `last` to the last element of `vec`
  *
- * [Returns] `NULLPTR` if `vec` or `last` are NULL,
- * `INVPTR` if the vector pointer validation fails,
- * `IOOB` if empty or `OK` otherwise
+ * @param[in]       vec: pointer to `vec_t` instance
+ * @param[out]      last: variable where data will be written into
+ *
+ * @return
+ * - `NULLPTR`      If `vec`, it's elements or `last` are `NULL`
+ * - `INVPTR`       If the vector pointer validation fails
+ * - `IOOB`         If `vec` is empty
+ * - `OK`           On success
  */
 vec_err_t
 vec_last(const vec_t* vec, void* last) {
     return vec_get(vec, vec->len - 1, last);
 }
 
-/*
- * Sets `len` to the length of `vec`.
+/**
+ * @brief           Sets `len` to the length of `vec`
  *
- * [Returns] `NULLPTR` if any of the parameters are NULL
- * `INVPTR` if the vector pointer validation fails, or `OK` otherwise.
+ * @param[in]       vec: pointer to `vec_t` instance
+ * @param[out]      len: variable where the length will be written into
+ *
+ * @return
+ * - `NULLPTR`      If `vec`, it's elements or `len` are `NULL`
+ * - `INVPTR`       If the vector pointer validation fails
+ * - `OK`           On success
  */
 vec_err_t
 vec_len(const vec_t* vec, size_t* len) {
-    if (vec == NULL || len == NULL) {
-        return VEC_ERR_NULLPTR;
+    vec_err_t vec_status = _vec_validate_ptr(vec);
+
+    if (vec_status != VEC_ERR_OK) {
+        return vec_status;
     }
-    if (vec->magic != VECTOR_MAGIC) {
-        return VEC_ERR_INVPTR;
+    if (len == NULL) {
+        return VEC_ERR_NULLPTR;
     }
 
     *len = vec->len;
@@ -758,19 +936,26 @@ vec_len(const vec_t* vec, size_t* len) {
     return VEC_ERR_OK;
 }
 
-/*
- * Sets `cap` to the capacity of `vec`.
+/**
+ * @brief           Sets `cap` to the capacity of `vec`
  *
- * [Returns] `NULLPTR` if any of the parameters are NULL,
- * `INVPTR` if the vector pointer validation fails, or `OK` otherwise.
+ * @param[in]       vec: pointer to `vec_t` instance
+ * @param[out]      cap: variable where the capacity will be written into
+ *
+ * @return
+ * - `NULLPTR`      If `vec`, it's elements or `cap` are `NULL`
+ * - `INVPTR`       If the vector pointer validation fails
+ * - `OK`           On success
  */
 vec_err_t
 vec_capacity(const vec_t* vec, size_t* cap) {
-    if (vec == NULL || cap == NULL) {
-        return VEC_ERR_NULLPTR;
+    vec_err_t vec_status = _vec_validate_ptr(vec);
+
+    if (vec_status != VEC_ERR_OK) {
+        return vec_status;
     }
-    if (vec->magic != VECTOR_MAGIC) {
-        return VEC_ERR_INVPTR;
+    if (cap == NULL) {
+        return VEC_ERR_NULLPTR;
     }
 
     *cap = vec->capacity;
@@ -778,19 +963,26 @@ vec_capacity(const vec_t* vec, size_t* cap) {
     return VEC_ERR_OK;
 }
 
-/*
- * Sets `space` to the space left in `vec`.
+/**
+ * @brief           Sets `space` to the space left in `vec`
  *
- * [Returns] `NULLPTR` if any of the parameters are NULL,
- * `INVPTR` if the vector pointer validation fails, or `OK` otherwise.
+ * @param[in]       vec: pointer to `vec_t` instance
+ * @param[out]      space: variable where the space will be written into
+ *
+ * @return
+ * - `NULLPTR`      If `vec`, it's elements or `space` are `NULL`
+ * - `INVPTR`       If the vector pointer validation fails
+ * - `OK`           On success
  */
 vec_err_t
 vec_space(const vec_t* vec, size_t* space) {
-    if (vec == NULL || space == NULL) {
-        return VEC_ERR_NULLPTR;
+    vec_err_t vec_status = _vec_validate_ptr(vec);
+
+    if (vec_status != VEC_ERR_OK) {
+        return vec_status;
     }
-    if (vec->magic != VECTOR_MAGIC) {
-        return VEC_ERR_INVPTR;
+    if (space == NULL) {
+        return VEC_ERR_NULLPTR;
     }
 
     *space = vec->capacity - vec->len;
@@ -798,19 +990,26 @@ vec_space(const vec_t* vec, size_t* space) {
     return VEC_ERR_OK;
 }
 
-/*
- * Sets `is_empty` to 1 if the length of the vector is 0, or to 0 otherwise.
+/**
+ * @brief           Sets `is_empty` to `1` if the length of the vector is `0`, or to `0` otherwise
  *
- * [Returns] `NULLPTR` if any of the parameters are NULL,
- * `INVPTR` if the vector pointer validation fails, or `OK` otherwise.
+ * @param[in]       vec: pointer to `vec_t` instance
+ * @param[out]      is_empty: variable where the result will be written into
+ *
+ * @return
+ * - `NULLPTR`      If `vec`, it's elements or `is_empty` are `NULL`
+ * - `INVPTR`       If the vector pointer validation fails
+ * - `OK`           On success
  */
 vec_err_t
 vec_is_empty(const vec_t* vec, bool* is_empty) {
-    if (vec == NULL || is_empty == NULL) {
-        return VEC_ERR_NULLPTR;
+    vec_err_t vec_status = _vec_validate_ptr(vec);
+
+    if (vec_status != VEC_ERR_OK) {
+        return vec_status;
     }
-    if (vec->magic != VECTOR_MAGIC) {
-        return VEC_ERR_INVPTR;
+    if (is_empty == NULL) {
+        return VEC_ERR_NULLPTR;
     }
 
     *is_empty = vec->len == 0;
@@ -818,56 +1017,70 @@ vec_is_empty(const vec_t* vec, bool* is_empty) {
     return VEC_ERR_OK;
 }
 
-/*
- * Prints the formatted contents of `vec`.
+/**
+ * @brief           Prints the formatted contents of `vec`
  *
- * [Returns] `NULLPTR` if the vector is NULL,
- * `INVPTR` if the vector pointer validation fails, or `OK` otherwise.
+ * @param[in]       vec: pointer to `vec_t` instance
+ * @param[in]       fd: descriptor of the file where the output will be printed
+ *
+ * @return
+ * - `NULLPTR`      If `vec`, it's elements or `fd` are `NULL`
+ * - `INVPTR`       If the vector pointer validation fails
+ * - `OK`           On success
  */
 vec_err_t
-vec_display(const vec_t* vec) {
-    if (vec == NULL) {
+vec_display(const vec_t* vec, FILE* fd) {
+    vec_err_t vec_status = _vec_validate_ptr(vec);
+
+    if (vec_status != VEC_ERR_OK) {
+        return vec_status;
+    }
+    if (fd == NULL) {
         return VEC_ERR_NULLPTR;
     }
-    if (vec->magic != VECTOR_MAGIC) {
-        return VEC_ERR_INVPTR;
-    }
     if (vec->len == 0) {
-        printf("[ ]\n");
+        fprintf(fd, "[ ]\n");
         return VEC_ERR_OK;
     }
 
     uint8_t* byte_p = (uint8_t*) vec->elems;
 
-    printf("[ ");
+    fprintf(fd, "[ ");
     for (size_t i = 0; i < vec->len; ++i) {
-        printf("0x");
+        fprintf(fd, "0x");
         for (size_t j = 0; j < vec->elem_size; ++j) {
-            printf("%02X", byte_p[i * vec->elem_size + j]);
+            fprintf(fd, "%02X", byte_p[i * vec->elem_size + j]);
         }
 
         if (i != vec->len - 1) {
-            printf(", ");
+            fprintf(fd, ", ");
         }
     }
-    printf(" ]\n");
+    fprintf(fd, " ]\n");
 
     return VEC_ERR_OK;
 }
 
-/*
- * Prints the formatted contents of the memory allocated by `vec`.
+/**
+ * @brief           Prints the formatted contents of the memory allocated by `vec`
  *
- * [Returns] `NULLPTR` if the vector is NULL,
- * `INVPTR` if the vector pointer validation fails, or `OK` otherwise.
+ * @param[in]       vec: pointer to `vec_t` instance
+ * @param[in]       fd: descriptor of the file where the output will be printed
+ *
+ * @return
+ * - `NULLPTR`      If `vec`, it's elements or `fd` are `NULL`
+ * - `INVPTR`       If the vector pointer validation fails
+ * - `OK`           On success
  */
 vec_err_t
-vec_debug(const vec_t* vec) {
-    if (vec == NULL) {
-        return VEC_ERR_NULLPTR;
+vec_debug(const vec_t* vec, FILE* fd) {
+    vec_err_t vec_status = _vec_validate_ptr(vec);
+
+    if (vec_status != VEC_ERR_OK) {
+        return vec_status;
     }
-    if (vec->magic != VECTOR_MAGIC) {
-        return VEC_ERR_INVPTR;
+    if (fd == NULL) {
+        return VEC_ERR_NULLPTR;
     }
     if (vec->capacity == 0) {
         printf("[ ]\n");
@@ -876,19 +1089,19 @@ vec_debug(const vec_t* vec) {
 
     uint8_t* byte_p = (uint8_t*) vec->elems;
 
-    printf("len: %lu, cap: %lu\n", vec->len, vec->capacity);
-    printf("[ ");
+    fprintf(fd, "len: %lu, cap: %lu\n", vec->len, vec->capacity);
+    fprintf(fd, "[ ");
     for (size_t i = 0; i < vec->capacity; ++i) {
-        printf("0x");
+        fprintf(fd, "0x");
         for (size_t j = 0; j < vec->elem_size; ++j) {
-            printf("%02X", i >= vec->len ? 0 : byte_p[i * vec->elem_size + j]);
+            fprintf(fd, "%02X", i >= vec->len ? 0 : byte_p[i * vec->elem_size + j]);
         }
 
         if (i != vec->capacity - 1) {
-            printf(", ");
+            fprintf(fd, ", ");
         }
     }
-    printf(" ]\n");
+    fprintf(fd, " ]\n");
 
     return VEC_ERR_OK;
 }
@@ -896,10 +1109,10 @@ vec_debug(const vec_t* vec) {
 
 /* === Error Handling === */
   
-/*
- * [Returns] the printable version of a
- * `vec_err_t` or NULL if `err`
- * doesn't belong to the enum.
+/**
+ * @return          The printable version of
+ *                      a `vec_err_t` or NULL if `err`
+ *                      doesn't belong to the enum
  */
 const char*
 vec_get_err_msg(vec_err_t err) {
