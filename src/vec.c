@@ -22,18 +22,18 @@
 /* =========== DATA ============ */
 
 /**
- * @brief           Represents a dynamic array of variable length
+ * @brief           Dynamic array of variable length
  *
  * @note            Resizes and shrinks dynamically, can store data of any type
  *                      as long as it has a constant size
  */
-typedef struct vec {
+struct vec {
     uint32_t magic;                             /**< Magic number for pointer validation */
     size_t len;                                 /**< Current number of elements */
     size_t capacity;                            /**< Current allocated memory */
     size_t elem_size;                           /**< Size of the data type stored */
     void* elems;                                /**< Memory containing the elements */
-} vec_t;
+};
 
 /**
  * @brief           Mapping between values of `vec_err_t`
@@ -49,12 +49,7 @@ static const char* const VEC_ERR_MSG[] = {
     "VEC_ERR_NOMEM"
 };
 
-#define MIN_CAPACITY 16                         /**< Minimum capacity of the vector */
-#define MAX_CAPACITY INT_MAX                    /**< Maximum capacity of the vector */
-#define MAX_DATA_SIZE INT_MAX                   /**< Maximum size in bytes of elements */
-
 #define VEC_MAGIC 0xF3EDB4BE                    /**< Magic value for vector pointer validation */
-
 
 
 /* ========== PRIVATE ========== */
@@ -72,7 +67,7 @@ static const char* const VEC_ERR_MSG[] = {
  * - `OK`           On success 
  */
 static vec_err_t
-_vec_validate_ptr(const vec_t* vec) {
+vec_validate_ptr(const vec_t* vec) {
     if (vec == NULL) {
         return VEC_ERR_NULLPTR;
     }
@@ -100,7 +95,7 @@ _vec_validate_ptr(const vec_t* vec) {
  * - `OK`           On success 
  */
 static vec_err_t
-_vec_reallocate(vec_t* vec, size_t capacity) {
+vec_reallocate(vec_t* vec, size_t capacity) {
     void* new_elems = realloc(vec->elems, capacity * vec->elem_size); 
 
     if (new_elems == NULL) {
@@ -120,7 +115,7 @@ _vec_reallocate(vec_t* vec, size_t capacity) {
  * @param[in]       vec: double pointer to `vec_t` instance
  */
 static void
-_vec_free(vec_t** vec) {
+vec_free(vec_t** vec) {
     free((*vec)->elems);
     free(*vec);
 
@@ -141,7 +136,7 @@ _vec_free(vec_t** vec) {
  * - `OK`           On success
  */
 static vec_err_t
-_vec_check_grow(vec_t* vec) {
+vec_check_grow(vec_t* vec) {
     if (vec->len < vec->capacity * GROWTH_POLICY) {
         return VEC_ERR_OK;
     }
@@ -150,7 +145,7 @@ _vec_check_grow(vec_t* vec) {
     }
 
     size_t new_capacity = vec->capacity * GROWTH_FACTOR;
-    return _vec_reallocate(vec, MIN_CAPACITY > new_capacity ? MIN_CAPACITY : new_capacity);
+    return vec_reallocate(vec, MIN_CAPACITY > new_capacity ? MIN_CAPACITY : new_capacity);
 }
 
 /**
@@ -166,13 +161,13 @@ _vec_check_grow(vec_t* vec) {
  * - `OK`           On success
  */
 static vec_err_t
-_vec_check_shrink(vec_t* vec) {
+vec_check_shrink(vec_t* vec) {
     if (vec->len >= vec->capacity / SHRINK_POLICY || vec->capacity <= MIN_CAPACITY) {
         return VEC_ERR_OK;
     }
 
     size_t new_capacity = vec->capacity / SHRINK_FACTOR;
-    return _vec_reallocate(vec, new_capacity < MIN_CAPACITY ? MIN_CAPACITY : new_capacity);
+    return vec_reallocate(vec, new_capacity < MIN_CAPACITY ? MIN_CAPACITY : new_capacity);
 }
 
 
@@ -186,8 +181,8 @@ _vec_check_shrink(vec_t* vec) {
  * @param[in]       src: variable where data will be read from
  */
 static void
-_vec_write_idx(vec_t* vec, size_t idx, const void* src) {
-    memcpy((uint8_t*) vec->elems + idx * vec->elem_size, src, vec->elem_size);
+vec_write_idx(vec_t* vec, size_t idx, const void* src) {
+    memcpy((uint8_t*) vec->elems + (idx * vec->elem_size), src, vec->elem_size);
 }
 
 /**
@@ -198,8 +193,8 @@ _vec_write_idx(vec_t* vec, size_t idx, const void* src) {
  * @param[out]      dst: variable where data will be written into
  */
 static void
-_vec_write_var(const vec_t* vec, size_t idx, void* dst) {
-    memcpy(dst, (uint8_t*) vec->elems + idx * vec->elem_size, vec->elem_size);
+vec_write_var(const vec_t* vec, size_t idx, void* dst) {
+    memcpy(dst, (uint8_t*) vec->elems + (idx * vec->elem_size), vec->elem_size);
 }
 
 
@@ -219,7 +214,7 @@ _vec_write_var(const vec_t* vec, size_t idx, void* dst) {
  * @note            It's required that `vec` points to `NULL`
  *
  * @return
- * - `INVOP`        If `elem_size` is `0` or `elem_size` <= `MAX_DATA_SIZE`, or if `vec` doesn't point to `NULL`
+ * - `INVOP`        If `elem_size` is < `MIN_DATA_SIZE`, `elem_size` > `MAX_DATA_SIZE`, or if `vec` doesn't point to `NULL`
  * - `NULLPTR`      If `vec` is `NULL`
  * - `NOMEM`        If fails to allocate memory 
  * - `OK`           On success
@@ -229,7 +224,7 @@ vec_make(vec_t** vec, size_t elem_size, size_t capacity) {
     if (vec == NULL) {
         return VEC_ERR_NULLPTR;
     }
-    if (elem_size < 1 || elem_size > MAX_DATA_SIZE) {
+    if (elem_size < MIN_DATA_SIZE || elem_size > MAX_DATA_SIZE) {
         return VEC_ERR_INVOP;
     }
     if (*vec != NULL) {
@@ -276,7 +271,7 @@ vec_make(vec_t** vec, size_t elem_size, size_t capacity) {
  */
 vec_err_t
 vec_resize(vec_t* vec, size_t capacity) {
-    vec_err_t vec_status = _vec_validate_ptr(vec);
+    vec_err_t vec_status = vec_validate_ptr(vec);
 
     if (vec_status != VEC_ERR_OK) {
         return vec_status;
@@ -285,7 +280,7 @@ vec_resize(vec_t* vec, size_t capacity) {
         return VEC_ERR_INVOP;
     }
 
-    return _vec_reallocate(vec, capacity);
+    return vec_reallocate(vec, capacity);
 }
 
 /**
@@ -303,7 +298,7 @@ vec_resize(vec_t* vec, size_t capacity) {
  */
 vec_err_t
 vec_shrink_to_fit(vec_t* vec) {
-    vec_err_t vec_status = _vec_validate_ptr(vec);
+    vec_err_t vec_status = vec_validate_ptr(vec);
 
     if (vec_status != VEC_ERR_OK) {
         return vec_status;
@@ -315,7 +310,7 @@ vec_shrink_to_fit(vec_t* vec) {
         return VEC_ERR_OK;
     }
 
-    return _vec_reallocate(vec, vec->len);
+    return vec_reallocate(vec, vec->len);
 }
 
 /**
@@ -332,7 +327,7 @@ vec_shrink_to_fit(vec_t* vec) {
  */
 vec_err_t
 vec_clear(vec_t* vec) {
-    vec_err_t vec_status = _vec_validate_ptr(vec);
+    vec_err_t vec_status = vec_validate_ptr(vec);
 
     if (vec_status != VEC_ERR_OK) {
         return vec_status;
@@ -380,7 +375,7 @@ vec_err_t
 vec_clone(const vec_t* src, vec_t** dst) {
     vec_err_t vec_status;
 
-    vec_status = _vec_validate_ptr(src);
+    vec_status = vec_validate_ptr(src);
 
     if (vec_status != VEC_ERR_OK) {
         return vec_status;
@@ -390,7 +385,7 @@ vec_clone(const vec_t* src, vec_t** dst) {
     }
 
     if (*dst != NULL) {
-        vec_status = _vec_validate_ptr(*dst);
+        vec_status = vec_validate_ptr(*dst);
 
         if (vec_status != VEC_ERR_OK) {
             return vec_status;
@@ -410,7 +405,7 @@ vec_clone(const vec_t* src, vec_t** dst) {
         }
 
         if (*dst != NULL) {
-            _vec_free(dst);
+            vec_free(dst);
         }
 
         *dst = clone;
@@ -438,13 +433,13 @@ vec_destroy(vec_t** vec) {
         return VEC_ERR_NULLPTR;
     }
 
-    vec_err_t vec_status = _vec_validate_ptr(*vec);
+    vec_err_t vec_status = vec_validate_ptr(*vec);
 
     if (vec_status != VEC_ERR_OK) {
         return vec_status;
     }
 
-    _vec_free(vec);
+    vec_free(vec);
 
     return VEC_ERR_OK;
 }
@@ -469,7 +464,7 @@ vec_destroy(vec_t** vec) {
  */
 vec_err_t
 vec_set(vec_t* vec, size_t idx, const void* src, void* old) {
-    vec_err_t vec_status = _vec_validate_ptr(vec);
+    vec_err_t vec_status = vec_validate_ptr(vec);
 
     if (vec_status != VEC_ERR_OK) {
         return vec_status;
@@ -482,9 +477,9 @@ vec_set(vec_t* vec, size_t idx, const void* src, void* old) {
     }
 
     if (old != NULL) {
-        _vec_write_var(vec, idx, old);
+        vec_write_var(vec, idx, old);
     }
-    _vec_write_idx(vec, idx, src);
+    vec_write_idx(vec, idx, src);
 
     return VEC_ERR_OK;
 }
@@ -506,7 +501,7 @@ vec_set(vec_t* vec, size_t idx, const void* src, void* old) {
  */
 vec_err_t
 vec_swap(vec_t* vec, size_t idx1, size_t idx2) {
-    vec_err_t vec_status = _vec_validate_ptr(vec);
+    vec_err_t vec_status = vec_validate_ptr(vec);
 
     if (vec_status != VEC_ERR_OK) {
         return vec_status;
@@ -523,9 +518,9 @@ vec_swap(vec_t* vec, size_t idx1, size_t idx2) {
         return VEC_ERR_NOMEM;
     }
 
-    _vec_write_var(vec, idx1, temp);
-    _vec_write_idx(vec, idx1, (uint8_t*) vec->elems + idx2 * vec->elem_size);
-    _vec_write_idx(vec, idx2, temp);
+    vec_write_var(vec, idx1, temp);
+    vec_write_idx(vec, idx1, (uint8_t*) vec->elems + (idx2 * vec->elem_size));
+    vec_write_idx(vec, idx2, temp);
 
     free(temp);
 
@@ -556,7 +551,7 @@ vec_err_t
 vec_insert(vec_t* vec, size_t idx, const void* src) {
     vec_err_t vec_status;
 
-    vec_status = _vec_validate_ptr(vec);
+    vec_status = vec_validate_ptr(vec);
 
     if (vec_status != VEC_ERR_OK) {
         return vec_status;
@@ -569,18 +564,18 @@ vec_insert(vec_t* vec, size_t idx, const void* src) {
         return VEC_ERR_IOOB;
     }
 
-    vec_status = _vec_check_grow(vec);
+    vec_status = vec_check_grow(vec);
 
     if (vec_status != VEC_ERR_OK) {
         return vec_status;
     }
 
-    memmove((uint8_t*) vec->elems + (idx + 1) * vec->elem_size,
-            (uint8_t*) vec->elems + idx * vec->elem_size,
+    memmove((uint8_t*) vec->elems + ((idx + 1) * vec->elem_size),
+            (uint8_t*) vec->elems + (idx * vec->elem_size),
             (vec->len - idx) * vec->elem_size);
 
     ++vec->len;
-    _vec_write_idx(vec, idx, src);
+    vec_write_idx(vec, idx, src);
 
     return VEC_ERR_OK;
 }
@@ -607,7 +602,7 @@ vec_insert(vec_t* vec, size_t idx, const void* src) {
  */
 vec_err_t
 vec_remove(vec_t* vec, size_t idx, void* removed) {
-    vec_err_t vec_status = _vec_validate_ptr(vec);
+    vec_err_t vec_status = vec_validate_ptr(vec);
 
     if (vec_status != VEC_ERR_OK) {
         return vec_status;
@@ -616,12 +611,12 @@ vec_remove(vec_t* vec, size_t idx, void* removed) {
         return VEC_ERR_IOOB;
     }
     if (removed != NULL) {
-        _vec_write_var(vec, idx, removed);
+        vec_write_var(vec, idx, removed);
     }
 
     if (idx != vec->len - 1) {
-        memmove((uint8_t*) vec->elems + idx * vec->elem_size,
-                (uint8_t*) vec->elems + (idx + 1) * vec->elem_size,
+        memmove((uint8_t*) vec->elems + (idx * vec->elem_size),
+                (uint8_t*) vec->elems + ((idx + 1) * vec->elem_size),
                 (vec->len - idx - 1) * vec->elem_size);
     }
 
@@ -629,7 +624,7 @@ vec_remove(vec_t* vec, size_t idx, void* removed) {
 
 #if !defined(VEC_DISABLE_SHRINK)
 
-    return _vec_check_shrink(vec);
+    return vec_check_shrink(vec);
 
 #endif /* #if !defined(VEC_DISABLE_SHRINK) */
 
@@ -705,7 +700,7 @@ vec_pop(vec_t* vec, void* popped) {
  */
 vec_err_t
 vec_fill(vec_t* vec, const void* src, size_t len) {
-    vec_err_t vec_status = _vec_validate_ptr(vec);
+    vec_err_t vec_status = vec_validate_ptr(vec);
 
     if (vec_status != VEC_ERR_OK) {
         return vec_status;
@@ -733,12 +728,12 @@ vec_fill(vec_t* vec, const void* src, size_t len) {
 
     size_t offset;
     for (offset = 1; offset << 1 < len; offset <<= 1) {
-        memcpy((uint8_t*) vec->elems + offset * vec->elem_size,
+        memcpy((uint8_t*) vec->elems + (offset * vec->elem_size),
                 vec->elems,
                 offset * vec->elem_size);
     }
 
-    memcpy((uint8_t*) vec->elems + offset * vec->elem_size,
+    memcpy((uint8_t*) vec->elems + (offset * vec->elem_size),
             vec->elems,
            (len - offset) * vec->elem_size);
 
@@ -764,7 +759,7 @@ vec_fill(vec_t* vec, const void* src, size_t len) {
  */
 vec_err_t
 vec_truncate(vec_t* vec, size_t len) {
-    vec_err_t vec_status = _vec_validate_ptr(vec);
+    vec_err_t vec_status = vec_validate_ptr(vec);
 
     if (vec_status != VEC_ERR_OK) {
         return vec_status;
@@ -777,7 +772,7 @@ vec_truncate(vec_t* vec, size_t len) {
 
 #if !defined(VEC_DISABLE_SHRINK)
 
-    return _vec_check_shrink(vec);
+    return vec_check_shrink(vec);
 
 #endif /* #if !defined(VEC_DISABLE_SHRINK) */
 
@@ -808,13 +803,13 @@ vec_extend(vec_t* dst, const vec_t* src) {
         return VEC_ERR_INVOP;
     }
 
-    vec_status = _vec_validate_ptr(dst);
+    vec_status = vec_validate_ptr(dst);
 
     if (vec_status != VEC_ERR_OK) {
         return vec_status;
     }
 
-    vec_status = _vec_validate_ptr(src);
+    vec_status = vec_validate_ptr(src);
 
     if (vec_status != VEC_ERR_OK) {
         return vec_status;
@@ -832,7 +827,7 @@ vec_extend(vec_t* dst, const vec_t* src) {
         }
     }
 
-    memcpy((uint8_t*)dst->elems + dst->len * dst->elem_size,
+    memcpy((uint8_t*)dst->elems + (dst->len * dst->elem_size),
             src->elems,
             src->len * src->elem_size);
 
@@ -858,7 +853,7 @@ vec_extend(vec_t* dst, const vec_t* src) {
  */
 vec_err_t
 vec_get(const vec_t* vec, size_t idx, void* dst) {
-    vec_err_t vec_status = _vec_validate_ptr(vec);
+    vec_err_t vec_status = vec_validate_ptr(vec);
 
     if (vec_status != VEC_ERR_OK) {
         return vec_status;
@@ -870,7 +865,7 @@ vec_get(const vec_t* vec, size_t idx, void* dst) {
         return VEC_ERR_IOOB;
     }
 
-    _vec_write_var(vec, idx, dst);
+    vec_write_var(vec, idx, dst);
 
     return VEC_ERR_OK;
 }
@@ -922,7 +917,7 @@ vec_last(const vec_t* vec, void* last) {
  */
 vec_err_t
 vec_len(const vec_t* vec, size_t* len) {
-    vec_err_t vec_status = _vec_validate_ptr(vec);
+    vec_err_t vec_status = vec_validate_ptr(vec);
 
     if (vec_status != VEC_ERR_OK) {
         return vec_status;
@@ -949,7 +944,7 @@ vec_len(const vec_t* vec, size_t* len) {
  */
 vec_err_t
 vec_capacity(const vec_t* vec, size_t* cap) {
-    vec_err_t vec_status = _vec_validate_ptr(vec);
+    vec_err_t vec_status = vec_validate_ptr(vec);
 
     if (vec_status != VEC_ERR_OK) {
         return vec_status;
@@ -976,7 +971,7 @@ vec_capacity(const vec_t* vec, size_t* cap) {
  */
 vec_err_t
 vec_space(const vec_t* vec, size_t* space) {
-    vec_err_t vec_status = _vec_validate_ptr(vec);
+    vec_err_t vec_status = vec_validate_ptr(vec);
 
     if (vec_status != VEC_ERR_OK) {
         return vec_status;
@@ -1003,7 +998,7 @@ vec_space(const vec_t* vec, size_t* space) {
  */
 vec_err_t
 vec_is_empty(const vec_t* vec, bool* is_empty) {
-    vec_err_t vec_status = _vec_validate_ptr(vec);
+    vec_err_t vec_status = vec_validate_ptr(vec);
 
     if (vec_status != VEC_ERR_OK) {
         return vec_status;
@@ -1030,7 +1025,7 @@ vec_is_empty(const vec_t* vec, bool* is_empty) {
  */
 vec_err_t
 vec_display(const vec_t* vec, FILE* fd) {
-    vec_err_t vec_status = _vec_validate_ptr(vec);
+    vec_err_t vec_status = vec_validate_ptr(vec);
 
     if (vec_status != VEC_ERR_OK) {
         return vec_status;
@@ -1049,7 +1044,7 @@ vec_display(const vec_t* vec, FILE* fd) {
     for (size_t i = 0; i < vec->len; ++i) {
         fprintf(fd, "0x");
         for (size_t j = 0; j < vec->elem_size; ++j) {
-            fprintf(fd, "%02X", byte_p[i * vec->elem_size + j]);
+            fprintf(fd, "%02X", byte_p[(i * vec->elem_size) + j]);
         }
 
         if (i != vec->len - 1) {
@@ -1074,7 +1069,7 @@ vec_display(const vec_t* vec, FILE* fd) {
  */
 vec_err_t
 vec_debug(const vec_t* vec, FILE* fd) {
-    vec_err_t vec_status = _vec_validate_ptr(vec);
+    vec_err_t vec_status = vec_validate_ptr(vec);
 
     if (vec_status != VEC_ERR_OK) {
         return vec_status;
@@ -1094,7 +1089,7 @@ vec_debug(const vec_t* vec, FILE* fd) {
     for (size_t i = 0; i < vec->capacity; ++i) {
         fprintf(fd, "0x");
         for (size_t j = 0; j < vec->elem_size; ++j) {
-            fprintf(fd, "%02X", i >= vec->len ? 0 : byte_p[i * vec->elem_size + j]);
+            fprintf(fd, "%02X", i >= vec->len ? 0 : byte_p[(i * vec->elem_size) + j]);
         }
 
         if (i != vec->capacity - 1) {

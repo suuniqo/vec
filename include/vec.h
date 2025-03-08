@@ -21,7 +21,7 @@
 /* =========== DATA ============ */
 
 /**
- * @brief           Represents a dynamic array of variable length
+ * @brief           Dynamic array of variable length
  *
  * @note            Resizes and shrinks dynamically, can store data of any type
  *                      as long as it has a constant size
@@ -47,6 +47,92 @@ typedef enum {
 #define GROWTH_POLICY 1                         /**< Maximum ratio of len / capacity */
 #define GROWTH_FACTOR 2                         /**< Factor by which the capacity grows */
 
+#define MIN_CAPACITY 16                         /**< Minimum capacity of the vector */
+#define MAX_CAPACITY INT_MAX                    /**< Maximum capacity of the vector */
+
+#define MIN_DATA_SIZE 1                         /**< Maximum size in bytes of elements */
+#define MAX_DATA_SIZE INT_MAX                   /**< Maximum size in bytes of elements */
+
+
+/* =========== MACRO =========== */
+
+/* === Memory Management === */
+
+/**
+ * @brief           Straightforward version of `vec_make`, which ignores errors
+ * @note            Use with caution, as it assumes that no errors occurred
+ */
+#define VEC_MAKE_AS(type, capacity) ({ \
+    vec_t* __tmp = NULL; \
+    (void)vec_make(&__tmp, sizeof((type)), (capacity)); \
+    __tmp; \
+})
+
+
+/* === Write Operations === */
+
+/**
+ * @brief           Straightforward version of `vec_set`, which ignores errors
+ * @note            Use with caution, as it assumes that no errors occurred
+ */
+#define VEC_SET_AS(type, vec, idx, val) ({ \
+    (type) __tmp; \
+    (void)vec_set((vec), (idx), &(val), &__tmp); \
+    __tmp; \
+})
+
+/**
+ * @brief           Straightforward version of `vec_remove`, which ignores errors
+ * @note            Use with caution, as it assumes that no errors occurred
+ */
+#define VEC_REMOVE_AS(type, vec, idx) ({ \
+    (type) __tmp; \
+    (void)vec_remove((vec), (idx), &__tmp); \
+    __tmp; \
+})
+
+/**
+ * @brief           Straightforward version of `vec_pop`, which ignores errors
+ * @note            Use with caution, as it assumes that no errors occurred
+ */
+#define VEC_POP_AS(type, vec) ({ \
+    (type) __tmp; \
+    (void)vec_pop((vec), &__tmp); \
+    __tmp; \
+})
+
+
+/* === Read Operations === */
+
+/**
+ * @brief           Straightforward version of `vec_get`, which ignores errors
+ * @note            Use with caution, as it assumes that no errors occurred
+ */
+#define VEC_GET_AS(type, vec, idx) ({ \
+    (type) __tmp; \
+    (void)vec_get((vec), (idx), &__tmp) == VEC_ERR_OK ? __tmp : (type){0}; \
+    __tmp; \
+})
+
+/**
+ * @brief           Straightforward version of `vec_first`, which ignores errors
+ * @note            Use with caution, as it assumes that no errors occurred
+ */
+#define VEC_FIRST_AS(type, vec) ({ \
+    (type) __tmp; \
+    (void)vec_first((vec), &__tmp); \
+    __tmp; \
+})
+
+/**
+ * @brief           Straightforward version of `vec_last`, which ignores errors
+ * @note            Use with caution, as it assumes that no errors occurred
+ */
+#define VEC_LAST_AS(type, vec) ({ \
+    (type) __tmp; \
+    (void)vec_last((vec), &__tmp); \
+    __tmp; \
+})
 
 
 /* ========== METHODS ========== */
@@ -54,7 +140,7 @@ typedef enum {
 /* === Memory Management === */
 
 /**
- * @brief           Creates a new instance of vec_t, allocating memory for `capacity`
+ * @brief           Creates a new instance of `vec_t`, allocating memory for `capacity`
  *                      (or default value if negative) elements of size `elem_size`
  *
  * @param[out]      vec: double pointer to unintialized `vec_t` instance (so it must point to `NULL`)
@@ -65,7 +151,7 @@ typedef enum {
  * @note            It's required that `vec` points to `NULL`
  *
  * @return
- * - `INVOP`        If `elem_size` is `0` or `elem_size` <= `MAX_DATA_SIZE`, or if `vec` doesn't point to `NULL`
+ * - `INVOP`        If `elem_size` < `MIN_DATA_SIZE`, `elem_size` > `MAX_DATA_SIZE`, or if `vec` doesn't point to `NULL`
  * - `NULLPTR`      If `vec` is `NULL`
  * - `NOMEM`        If fails to allocate memory 
  * - `OK`           On success
@@ -453,7 +539,7 @@ vec_is_empty(const vec_t* vec, bool* is_empty);
  * - `OK`           On success
  */
 extern vec_err_t
-vec_display(const vec_t* vec, FILE* file);
+vec_display(const vec_t* vec, FILE* fd);
 
 /**
  * @brief           Prints the formatted contents of the memory allocated by `vec`
@@ -467,7 +553,7 @@ vec_display(const vec_t* vec, FILE* file);
  * - `OK`           On success
  */
 extern vec_err_t
-vec_debug(const vec_t* vec, FILE* file);
+vec_debug(const vec_t* vec, FILE* fd);
 
 
 /* === Error Handling === */

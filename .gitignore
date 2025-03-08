@@ -1,1 +1,11 @@
-.DS_STORE
+.DS_Store
+
+.clangd
+.clang-tidy
+
+compile_commands.json
+
+/build/
+/tests/
+/bin/
+/lib/
